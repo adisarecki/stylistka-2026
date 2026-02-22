@@ -1,0 +1,20 @@
+{
+  "apple": {
+    "uiTitle": "Elegancka suknia na wesele dla sylwetki jabłko",
+    "apiQuery": "sukienka empire dekolt V midi na wesele lejąca tkanina",
+    "stylistComment": "Sylwetka jabłko z ładnie zarysowanymi ramionami. Fason empire wysmukli, podkreśli dekolt i harmonijnie ułoży się na figurze, idealny na wesele.",
+    "figureType": "Jabłko",
+    "strength": "Promienny uśmiech, ładnie zarysowane ramiona i proporcjonalne nogi.",
+    "advice": "Wybierz sukienkę empire z dekoltem V lub kopertowym, długości midi lub maxi, wykonaną z lekkiego, lejącego materiału. Mile widziane delikatne rękawy.",
+    "avoid": "Unikaj sukienek obcisłych, z mocno zaznaczoną talią oraz sztywnymi, dodającymi objętości tkaninami. Zrezygnuj też z dużych wzorów na brzuchu."
+  },
+  "slim": {
+    "uiTitle": "Podkreśl atuty: Sukienka na wesele dla sylwetki klepsydra",
+    "apiQuery": "sukienka na wesele midi kopertowa dekolt V",
+    "stylistComment": "Twoja sylwetka klepsydry pięknie prezentuje się w fasonach podkreślających talię i eksponujących dekolt. Kopertowa midi to strzał w dziesiątkę na wesele.",
+    "figureType": "klepsydra",
+    "strength": "długie nogi i zarysowana talia",
+    "advice": "Postaw na sukienki podkreślające zarys talii, takie jak fasony kopertowe, ołówkowe lub z delikatnym rozkloszowaniem od pasa. Dekolt V lub serce pięknie uwydatni biust, a długość midi wyeksponuje zgrabne nogi.",
+    "avoid": "Unikaj sukienek typu 'worek' lub tych z bardzo obniżoną talią, które zniwelują naturalne wcięcie. Zrezygnuj z przesadnych zdobień na biodrach, by nie poszerzać tej partii."
+  }
+}
