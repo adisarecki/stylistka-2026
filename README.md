@@ -137,9 +137,10 @@ Przed pierwszą aktualizacją produkcyjną lub w przypadku zmiany kluczy, należ
   - Implementacja **Złotej Zasady Ostrości (Vision Focus)** w prompcie: AI dynamicznie analizuje proporcje góry lub dołu ciała w zależności od szukanego typu ubrania.
   - Wprowadzenie **Logiki Kategorii & Dynamicznego Selektora Rozmiarów**: Rozmiarówka dostosowuje się (EU_CLOTHES, EU_SHOES, One Size) pod rozpoznaną przez AI/wyszukiwarkę kategorię.
   - **Automatyczne Rozpoznawanie Płci**: Inteligencja AI samodzielnie wykrywa płeć po prompcie, a manualny przełącznik przeniesiono do "Opcji zaawansowanych".
+  - **Inteligentna Kaskada Geolokalizacji**: Wbudowano logikę ustalania lokalizacji użytkownika metodą GPS -> IP (GeoJS API) -> Domyślny fallback (Będzin / Śląsk), z opcją ręcznego nadpisania w `LocationHeader`.
 
 ---
 *Dokumentacja aktualizowana regularnie pod nadzorem Mentora, zgodnie z wizją Wizjonera i wdrożona przez Antigravity.*
-#   s t y l i s t k a - 2 0 2 6 
+#   s t y l i s t k a - 2 0 2 6 
  
  

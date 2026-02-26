@@ -1,22 +1,25 @@
 'use client';
 
-import { useState } from 'react';
-import { MapPin, Check, X } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { MapPin, Check, X, Loader2 } from 'lucide-react';
 import { useLocation } from './LocationContext';
 
 export default function LocationHeader() {
-    const { location, setLocation } = useLocation();
+    const { location, setLocation, autoLocate, isLocating } = useLocation();
     const [isEditing, setIsEditing] = useState(false);
     const [tempLocation, setTempLocation] = useState(location);
 
+    useEffect(() => {
+        setTempLocation(location);
+    }, [location]);
+
     const handleSave = () => {
-        setLocation(tempLocation);
+        setLocation(tempLocation || 'Będzin / Śląsk');
         setIsEditing(false);
     };
 
-    const handleGPS = () => {
-        setTempLocation('Będzin / Śląsk');
-        setLocation('Będzin / Śląsk');
+    const handleGPS = async () => {
+        await autoLocate();
         setIsEditing(false);
     };
 
@@ -26,8 +29,9 @@ export default function LocationHeader() {
                 <button
                     onClick={() => setIsEditing(true)}
                     className="flex items-center gap-2 bg-white hover:bg-gray-50 border border-gray-200 px-4 py-2 rounded-full text-gray-700 text-sm font-medium transition-all shadow-sm hover:shadow-md"
+                    disabled={isLocating}
                 >
-                    <MapPin size={16} className="text-indigo-500" />
+                    {isLocating ? <Loader2 size={16} className="text-indigo-500 animate-spin" /> : <MapPin size={16} className="text-indigo-500" />}
                     <span>{location}</span>
                 </button>
             ) : (
