@@ -63,7 +63,7 @@ export default function ShoppingCarousel({
               price: '450 PLN',
               store: 'Butik Lady eM',
               imageUrl: 'https://images.unsplash.com/photo-1595777457583-95e059d581b8?w=800&q=80',
-              link: '#',
+              link: 'https://www.facebook.com/profile.php?id=100063628373739', // Przykładowy realny/mockowany link do FB
               isLocal: true,
               distance: '2.5 km',
             },
@@ -73,7 +73,7 @@ export default function ShoppingCarousel({
               price: '399 PLN',
               store: 'Butik Verona',
               imageUrl: 'https://images.unsplash.com/photo-1591369822096-0d4ee16ac0b7?w=800&q=80',
-              link: '#',
+              link: 'https://www.instagram.com/explore/tags/butikverona/', // Przykładowy realny/mockowany link do IG
               isLocal: true,
               distance: '3.1 km',
             }
@@ -150,8 +150,8 @@ export default function ShoppingCarousel({
             <div
               key={product.id}
               className={`flex-none w-64 snap-center bg-white/5 border backdrop-blur-md rounded-2xl overflow-hidden transition-all duration-300 group/card flex flex-col ${product.isLocal
-                  ? 'border-amber-400/80 shadow-[0_0_15px_rgba(251,191,36,0.15)] hover:shadow-[0_0_25px_rgba(251,191,36,0.3)] hover:-translate-y-1 hover:border-amber-400'
-                  : 'border-white/10 hover:border-indigo-500/30 hover:-translate-y-1 hover:shadow-xl'
+                ? 'border-amber-400/80 shadow-[0_0_15px_rgba(251,191,36,0.15)] hover:shadow-[0_0_25px_rgba(251,191,36,0.3)] hover:-translate-y-1 hover:border-amber-400'
+                : 'border-white/10 hover:border-indigo-500/30 hover:-translate-y-1 hover:shadow-xl'
                 }`}
             >
               {/* Zdjęcie Produktu */}
