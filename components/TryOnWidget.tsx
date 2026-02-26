@@ -61,6 +61,7 @@ export default function TryOnWidget() {
   const [itemQuery, setItemQuery] = useState<string>('');
   const [occasionQuery, setOccasionQuery] = useState<string>('');
   const [sizeQuery, setSizeQuery] = useState<string>('');
+  const [genderQuery, setGenderQuery] = useState<string>('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isTryOnLoading, setIsTryOnLoading] = useState(false);
@@ -92,7 +93,8 @@ export default function TryOnWidget() {
         body: JSON.stringify({
           image: personBase64,
           query: itemQuery,
-          occasion: occasionQuery
+          occasion: occasionQuery,
+          gender: genderQuery
         }),
       });
 
@@ -227,7 +229,30 @@ export default function TryOnWidget() {
                 </label>
               </div>
 
-              {/* Input: Rozmiar */}
+              {/* Select: Płeć / Dla kogo */}
+              <div className="relative group">
+                <select
+                  id="genderQuery"
+                  className="peer w-full bg-slate-900/50 text-slate-100 border-b-2 border-slate-700 py-3 px-1 focus:outline-none focus:border-pink-500 transition-colors appearance-none cursor-pointer"
+                  value={genderQuery}
+                  onChange={(e) => setGenderQuery(e.target.value)}
+                >
+                  <option value="" disabled className="bg-slate-900 text-slate-500">Dla kogo szukasz?</option>
+                  <option value="kobieta" className="bg-slate-900">Kobieta</option>
+                  <option value="mężczyzna" className="bg-slate-900">Mężczyzna</option>
+                  <option value="inne" className="bg-slate-900">Inne / Uniseks</option>
+                </select>
+                <label
+                  htmlFor="genderQuery"
+                  className="absolute left-1 -top-3.5 text-pink-400 text-sm transition-all"
+                >
+                  Płeć / Kategoria
+                </label>
+                <div className="absolute right-2 top-4 pointer-events-none text-slate-500 group-focus-within:text-pink-400 transition-colors font-bold">
+                  <ChevronDown size={14} />
+                </div>
+              </div>
+
               {/* Select: Rozmiar */}
               <div className="relative group">
                 <select
@@ -258,9 +283,9 @@ export default function TryOnWidget() {
               {/* Przycisk Mocy */}
               <button
                 onClick={handleAnalyzeSilhouette}
-                disabled={!personBase64 || isAnalyzing || !sizeQuery.trim()}
+                disabled={!personBase64 || isAnalyzing || !sizeQuery.trim() || !genderQuery.trim()}
                 className={`w-full relative group overflow-hidden rounded-xl py-4 font-bold text-lg text-white shadow-lg transition-all duration-300 hover:scale-[1.02] hover:shadow-indigo-500/25 active:scale-95
-                  ${(!personBase64 || isAnalyzing || !sizeQuery.trim())
+                  ${(!personBase64 || isAnalyzing || !sizeQuery.trim() || !genderQuery.trim())
                     ? 'bg-slate-800 text-slate-500 cursor-not-allowed grayscale'
                     : 'bg-gradient-to-r from-violet-600 to-indigo-600 shadow-glow'}`}
               >

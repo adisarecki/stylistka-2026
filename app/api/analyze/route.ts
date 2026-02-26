@@ -5,7 +5,7 @@ const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY || "");
 
 export async function POST(req: Request) {
   try {
-    const { image, query, occasion } = await req.json();
+    const { image, query, occasion, gender } = await req.json();
 
     const modelName = "gemini-2.5-flash"; // Updated to stable 2.5-flash
     console.log("API KEY EXISTS:", !!process.env.GOOGLE_API_KEY);
@@ -41,8 +41,10 @@ export async function POST(req: Request) {
         - Każdy werdykt MUSI kończyć się przypisaniem do jednej z powyższych 5 kategorii w polu "figureType".
         - Jeśli widzisz sylwetkę typu Jabłko, zaproponuj fasony empire, które maskują okolicę brzucha i eksponują Twoje atuty (np. dekolt, nogi).
         - Dostosuj rady ściśle do obrazu. Zabraniam używania ogólnych porad.
+        - Złota zasada ostrości (Focus): Jeśli użytkownik szuka obuwia lub dolnej części garderoby (np. "buty", "spodnie", "spódnica"), skoncentruj analizę obrazu wyłącznie na nogach i dolnej połowie ciała. Jeśli szuka górnej części ubrań lub całości (np. "sukienka", "koszula"), analizuj całą sylwetkę.
         
         Użytkownik szuka: ${query} na okazję: ${occasion}.
+        Płeć / Kategoria dla której dobierasz ubrania: ${gender || "Nie określono"}. Zadbaj o to, by słowa kluczowe w wynikach wyszukiwania (apiQuery) jasno precyzowały rodzaj ubrań dla tej płci/kategorii (np. sukienka dla kobiety, garnitur męski dla mężczyzny itd.).
         
         Zwróć odpowiedź WYŁĄCZNIE jako czysty obiekt JSON:
         {

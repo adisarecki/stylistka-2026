@@ -28,6 +28,9 @@ W przypadku wykrycia sylwetki typu **JABŁKO**, system automatycznie wzmacnia za
 
 Aplikacja wykorzystuje precyzyjne, techniczne zapytania, aby wyeliminować szum informacyjny i redundancję.
 
+### Personalizacja Płci (Gender Selector)
+Przed uruchomieniem analizy użytkownik musi określić, dla kogo szuka ubrań (Kobieta / Mężczyzna / Inne). Parametr ten jest wstrzykiwany bezpośrednio do promptu dla Gemini, dzięki czemu sztuczna inteligencja precyzyjnie dobiera typ i fason odzieży (np. proponując męski garnitur zamiast damskiej marynarki), co drastycznie podnosi trafność generowanego `apiQuery`.
+
 ### Endpoint `/api/products` (Serper.dev)
 System generuje `apiQuery` dla silnika **Serper.dev** (Google Images via JSON API), który jest następnie wzbogacany o filtry dynamiczne:
 - **Silnik**: Serper.dev jest naszym jedynym i głównym silnikiem wyszukiwania produktów. Eliminujemy tym samym potrzebę konfiguracji Google Cloud Custom Search.
@@ -38,6 +41,12 @@ System generuje `apiQuery` dla silnika **Serper.dev** (Google Images via JSON AP
   - Jeśli `figureType === 'JABŁKO'`, system w locie dopisuje frazy `+empire +maskująca talia`.
   - **Mechanizm Graceful Fallback**: W przypadku, gdy twardy filtr rozmiaru nie zwróci żadnych wyników, system automatycznie ponawia zapytanie bez filtra rozmiaru. Użytkownik otrzymuje wtedy propozycje alternatywne wraz z czytelnym komunikatem w UI: „Brak Twojego rozmiaru w głównych propozycjach...”. Gwarantuje to ciągłość UX i zawsze dostarcza wartościową inspirację modową.
   - Dzięki temu użytkownik otrzymuje wyniki, które fizycznie realizują porady AI stylistki i są dostępne w jego rozmiarze lub stanowią najlepszą alternatywę fasonową.
+
+### Moduł Lokalny Pomost (Faza 1.5)
+Aplikacja została wzbogacona o hybrydowe wyniki wyszukiwania wspierające lokalne biznesy:
+- **Kontekst Lokalizacji**: Użytkownik może wpisać swoje miasto lub użyć geolokalizacji w nowym nagłówku (`LocationHeader`).
+- **Wstrzykiwanie Partnerów (Premium UI)**: Karuzela wstrzykuje wyselekcjonowane "Lokalne Perełki" (partnerskie butiki z okolicy) pomiędzy standardowe wyniki z sieciówek.
+- **Konwersja O2O (Online to Offline)**: Lokalne oferty posiadają złote akcenty premium, znacznik odległości (np. "2.5 km od Ciebie") oraz bezpośrednie odnośniki do zewnętrznych miejsc w sieci (np. profil Facebook butiku), a także opcje wytyczenia trasy lub telefonu do salonu.
 
 ### Uniwersalny Standard Rozmiarów (Mapping)
 Aplikacja wykorzystuje połączony standard międzynarodowy i europejski dla maksymalnej precyzji:
