@@ -130,6 +130,14 @@ Przed pierwszą aktualizacją produkcyjną lub w przypadku zmiany kluczy, należ
 2. Wypchnij najnowszy kod komendą: `git push`.
 3. Monitoruj status budowania w panelu Vercel (Dashboard).
 
+## Historia Rozwoju (Changelog)
+
+- **2026-02-26**: 
+  - Wdrożenie modułu **Lokalny Pomost (Faza 1.5)**: Header geolokalizacji, wstrzykiwanie "Lokalnych Perełek" z bazą butików offline do karuzeli w celach O2O.
+  - Implementacja **Złotej Zasady Ostrości (Vision Focus)** w prompcie: AI dynamicznie analizuje proporcje góry lub dołu ciała w zależności od szukanego typu ubrania.
+  - Wprowadzenie **Logiki Kategorii & Dynamicznego Selektora Rozmiarów**: Rozmiarówka dostosowuje się (EU_CLOTHES, EU_SHOES, One Size) pod rozpoznaną przez AI/wyszukiwarkę kategorię.
+  - **Automatyczne Rozpoznawanie Płci**: Inteligencja AI samodzielnie wykrywa płeć po prompcie, a manualny przełącznik przeniesiono do "Opcji zaawansowanych".
+
 ---
 *Dokumentacja aktualizowana regularnie pod nadzorem Mentora, zgodnie z wizją Wizjonera i wdrożona przez Antigravity.*
 #   s t y l i s t k a - 2 0 2 6 

@@ -44,7 +44,8 @@ export async function POST(req: Request) {
         - Złota zasada ostrości (Focus): Jeśli użytkownik szuka obuwia lub dolnej części garderoby (np. "buty", "spodnie", "spódnica"), skoncentruj analizę obrazu wyłącznie na nogach i dolnej połowie ciała. Jeśli szuka górnej części ubrań lub całości (np. "sukienka", "koszula"), analizuj całą sylwetkę.
         
         Użytkownik szuka: ${query} na okazję: ${occasion}.
-        Płeć / Kategoria dla której dobierasz ubrania: ${gender || "Nie określono"}. Zadbaj o to, by słowa kluczowe w wynikach wyszukiwania (apiQuery) jasno precyzowały rodzaj ubrań dla tej płci/kategorii (np. sukienka dla kobiety, garnitur męski dla mężczyzny itd.).
+        Preferencja płci/kroju (opcjonalnie): ${gender || "Domyślnie - rozpoznaj płeć automatycznie na podstawie zdjęcia"}.
+        ZASADA: Jeśli preferencja płci nie jest podana, samodzielnie rozpoznaj płeć osoby na zdjęciu i na tej podstawie dobieraj ubrania. Zadbaj o to, by słowa kluczowe w wynikach wyszukiwania (apiQuery) jasno precyzowały rodzaj ubrań dla wykrytej płci/kategorii (np. dodaj 'damska' lub 'damskie' dla kobiet, 'męski' lub 'męskie' dla mężczyzn).
         
         Zwróć odpowiedź WYŁĄCZNIE jako czysty obiekt JSON:
         {

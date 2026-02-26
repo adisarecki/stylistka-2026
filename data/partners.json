@@ -1,0 +1,72 @@
+[
+    {
+        "id": "local-1",
+        "name": "Jedwabna Sukienka Wieczorowa",
+        "price": "450 PLN",
+        "store": "Butik Lady eM",
+        "imageUrl": "https://images.unsplash.com/photo-1595777457583-95e059d581b8?w=800&q=80",
+        "link": "https://www.facebook.com/profile.php?id=100063628373739",
+        "isLocal": true,
+        "distance": "2.5 km",
+        "availableSizes": [
+            "34",
+            "36",
+            "38"
+        ],
+        "categories": [
+            "CLOTHES"
+        ]
+    },
+    {
+        "id": "local-2",
+        "name": "Elegancka Marynarka Premium",
+        "price": "399 PLN",
+        "store": "Butik Verona",
+        "imageUrl": "https://images.unsplash.com/photo-1591369822096-0d4ee16ac0b7?w=800&q=80",
+        "link": "https://www.instagram.com/explore/tags/butikverona/",
+        "isLocal": true,
+        "distance": "3.1 km",
+        "availableSizes": [
+            "38",
+            "40",
+            "42"
+        ],
+        "categories": [
+            "CLOTHES"
+        ]
+    },
+    {
+        "id": "local-3",
+        "name": "Limitowane Sneakersy Premium",
+        "price": "899 PLN",
+        "store": "SneakerSpot",
+        "imageUrl": "https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=800&q=80",
+        "link": "https://www.instagram.com/explore/tags/sneaker/",
+        "isLocal": true,
+        "distance": "1.2 km",
+        "availableSizes": [
+            "40",
+            "41",
+            "42",
+            "43",
+            "44",
+            "45"
+        ],
+        "categories": [
+            "SHOES"
+        ]
+    },
+    {
+        "id": "local-4",
+        "name": "Skórzana Torebka Shopper",
+        "price": "299 PLN",
+        "store": "Butik Elegance",
+        "imageUrl": "https://images.unsplash.com/photo-1584916201218-f4242ceb4809?w=800&q=80",
+        "link": "https://www.facebook.com/profile.php",
+        "isLocal": true,
+        "distance": "4.5 km",
+        "categories": [
+            "ACCESSORIES"
+        ]
+    }
+]

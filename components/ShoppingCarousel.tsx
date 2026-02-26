@@ -3,6 +3,7 @@
 import { ShoppingBag, Tag, ExternalLink, Shirt, Loader2, MapPin, Map, Phone } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useLocation } from './LocationContext';
+import partnersData from '@/data/partners.json';
 
 interface Product {
   id: string;
@@ -55,29 +56,22 @@ export default function ShoppingCarousel({
             );
           }
 
-          // Inject Local Partners
-          const localPartners: Product[] = [
-            {
-              id: 'local-1',
-              name: 'Jedwabna Sukienka Wieczorowa',
-              price: '450 PLN',
-              store: 'Butik Lady eM',
-              imageUrl: 'https://images.unsplash.com/photo-1595777457583-95e059d581b8?w=800&q=80',
-              link: 'https://www.facebook.com/profile.php?id=100063628373739', // Przykładowy realny/mockowany link do FB
-              isLocal: true,
-              distance: '2.5 km',
-            },
-            {
-              id: 'local-2',
-              name: 'Elegancka Marynarka Premium',
-              price: '399 PLN',
-              store: 'Butik Verona',
-              imageUrl: 'https://images.unsplash.com/photo-1591369822096-0d4ee16ac0b7?w=800&q=80',
-              link: 'https://www.instagram.com/explore/tags/butikverona/', // Przykładowy realny/mockowany link do IG
-              isLocal: true,
-              distance: '3.1 km',
-            }
-          ];
+          // Detect category to filter local partners correctly
+          const q = searchQuery.toLowerCase();
+          let currentCategory = 'CLOTHES';
+          if (q.includes('buty') || q.includes('obuw') || q.includes('sneaker') || q.includes('trampki') || q.includes('szpilki') || q.includes('kozaki') || q.includes('sandały') || q.includes('botki') || q.includes('mokasyny')) currentCategory = 'SHOES';
+          else if (q.includes('okulary') || q.includes('torebk') || q.includes('czapk') || q.includes('szalik') || q.includes('pasek') || q.includes('biżuteria') || q.includes('naszyjnik') || q.includes('kolczyk') || q.includes('kapelusz') || q.includes('krawat') || q.includes('zegarek')) currentCategory = 'ACCESSORIES';
+
+          // Inject Local Partners from JSON
+          const localPartners: Product[] = partnersData.filter((partner: any) => {
+            // Check category match
+            if (partner.categories && !partner.categories.includes(currentCategory)) return false;
+
+            // Check size availability (if size is provided and partner has specific sizes)
+            if (size && partner.availableSizes && !partner.availableSizes.includes(size)) return false;
+
+            return true;
+          });
 
           const injectedProducts: Product[] = [];
           let localIndex = 0;

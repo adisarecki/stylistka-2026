@@ -65,6 +65,18 @@ export default function TryOnWidget() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isTryOnLoading, setIsTryOnLoading] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+
+  // Dynamiczna detekcja kategorii
+  const detectCategory = (query: string) => {
+    const q = query.toLowerCase();
+    if (q.includes('buty') || q.includes('obuw') || q.includes('sneaker') || q.includes('trampki') || q.includes('szpilki') || q.includes('kozaki') || q.includes('sandały') || q.includes('botki') || q.includes('mokasyny')) return 'SHOES';
+    if (q.includes('okulary') || q.includes('torebk') || q.includes('czapk') || q.includes('szalik') || q.includes('pasek') || q.includes('biżuteria') || q.includes('naszyjnik') || q.includes('kolczyk') || q.includes('kapelusz') || q.includes('krawat') || q.includes('zegarek')) return 'ACCESSORIES';
+    return 'CLOTHES';
+  };
+
+  const currentCategory = detectCategory(itemQuery);
+  const isSizeRequired = currentCategory !== 'ACCESSORIES';
 
   const handleUserUpload = async (file: File | null) => {
     if (file) {
@@ -229,63 +241,100 @@ export default function TryOnWidget() {
                 </label>
               </div>
 
-              {/* Select: Płeć / Dla kogo */}
-              <div className="relative group">
-                <select
-                  id="genderQuery"
-                  className="peer w-full bg-slate-900/50 text-slate-100 border-b-2 border-slate-700 py-3 px-1 focus:outline-none focus:border-pink-500 transition-colors appearance-none cursor-pointer"
-                  value={genderQuery}
-                  onChange={(e) => setGenderQuery(e.target.value)}
+              {/* Sekcja Zaawansowana (Opcjonalnie) */}
+              <div className="pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowAdvanced(!showAdvanced)}
+                  className="text-indigo-400 hover:text-indigo-300 text-sm flex items-center gap-2 font-medium transition-colors"
                 >
-                  <option value="" disabled className="bg-slate-900 text-slate-500">Dla kogo szukasz?</option>
-                  <option value="kobieta" className="bg-slate-900">Kobieta</option>
-                  <option value="mężczyzna" className="bg-slate-900">Mężczyzna</option>
-                  <option value="inne" className="bg-slate-900">Inne / Uniseks</option>
-                </select>
-                <label
-                  htmlFor="genderQuery"
-                  className="absolute left-1 -top-3.5 text-pink-400 text-sm transition-all"
-                >
-                  Płeć / Kategoria
-                </label>
-                <div className="absolute right-2 top-4 pointer-events-none text-slate-500 group-focus-within:text-pink-400 transition-colors font-bold">
-                  <ChevronDown size={14} />
-                </div>
+                  ⚙️ {showAdvanced ? 'Ukryj zaawansowane' : 'Opcje zaawansowane (np. wymuś płeć/krój)'}
+                </button>
+
+                {showAdvanced && (
+                  <div className="mt-4 animate-fade-in-up">
+                    <div className="relative group">
+                      <select
+                        id="genderQuery"
+                        className="peer w-full bg-slate-900/50 text-slate-100 border-b-2 border-slate-700 py-3 px-1 focus:outline-none focus:border-pink-500 transition-colors appearance-none cursor-pointer"
+                        value={genderQuery}
+                        onChange={(e) => setGenderQuery(e.target.value)}
+                      >
+                        <option value="" className="bg-slate-900 text-slate-500">Auto (AI dopasuje do zdjęcia)</option>
+                        <option value="kobieta" className="bg-slate-900">Kobieta</option>
+                        <option value="mężczyzna" className="bg-slate-900">Mężczyzna</option>
+                        <option value="inne" className="bg-slate-900">Inne / Uniseks</option>
+                      </select>
+                      <label
+                        htmlFor="genderQuery"
+                        className="absolute left-1 -top-3.5 text-pink-400 text-sm transition-all"
+                      >
+                        Wymuś Płeć / Krój
+                      </label>
+                      <div className="absolute right-2 top-4 pointer-events-none text-slate-500 group-focus-within:text-pink-400 transition-colors font-bold">
+                        <ChevronDown size={14} />
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Select: Rozmiar */}
-              <div className="relative group">
-                <select
-                  id="sizeQuery"
-                  className="peer w-full bg-slate-900/50 text-slate-100 border-b-2 border-slate-700 py-3 px-1 focus:outline-none focus:border-emerald-500 transition-colors appearance-none cursor-pointer"
-                  value={sizeQuery}
-                  onChange={(e) => setSizeQuery(e.target.value)}
-                >
-                  <option value="" disabled className="bg-slate-900 text-slate-500">Wybierz rozmiar</option>
-                  <option value="34" className="bg-slate-900">XS (34)</option>
-                  <option value="36" className="bg-slate-900">S (36)</option>
-                  <option value="38" className="bg-slate-900">M (38)</option>
-                  <option value="40" className="bg-slate-900">L (40)</option>
-                  <option value="42" className="bg-slate-900">XL (42)</option>
-                  <option value="44" className="bg-slate-900">XXL (44)</option>
-                </select>
-                <label
-                  htmlFor="sizeQuery"
-                  className="absolute left-1 -top-3.5 text-emerald-400 text-sm transition-all"
-                >
-                  Rozmiar (EU)
-                </label>
-                <div className="absolute right-2 top-4 pointer-events-none text-slate-500 group-focus-within:text-emerald-400 transition-colors font-bold">
-                  <ChevronDown size={14} />
+              {currentCategory !== 'ACCESSORIES' ? (
+                <div className="relative group">
+                  <select
+                    id="sizeQuery"
+                    className="peer w-full bg-slate-900/50 text-slate-100 border-b-2 border-slate-700 py-3 px-1 focus:outline-none focus:border-emerald-500 transition-colors appearance-none cursor-pointer"
+                    value={sizeQuery}
+                    onChange={(e) => setSizeQuery(e.target.value)}
+                  >
+                    <option value="" disabled className="bg-slate-900 text-slate-500">Wybierz rozmiar</option>
+                    {currentCategory === 'SHOES' ? (
+                      <>
+                        <option value="36" className="bg-slate-900">36</option>
+                        <option value="37" className="bg-slate-900">37</option>
+                        <option value="38" className="bg-slate-900">38</option>
+                        <option value="39" className="bg-slate-900">39</option>
+                        <option value="40" className="bg-slate-900">40</option>
+                        <option value="41" className="bg-slate-900">41</option>
+                        <option value="42" className="bg-slate-900">42</option>
+                        <option value="43" className="bg-slate-900">43</option>
+                        <option value="44" className="bg-slate-900">44</option>
+                        <option value="45" className="bg-slate-900">45</option>
+                      </>
+                    ) : (
+                      <>
+                        <option value="34" className="bg-slate-900">XS (34)</option>
+                        <option value="36" className="bg-slate-900">S (36)</option>
+                        <option value="38" className="bg-slate-900">M (38)</option>
+                        <option value="40" className="bg-slate-900">L (40)</option>
+                        <option value="42" className="bg-slate-900">XL (42)</option>
+                        <option value="44" className="bg-slate-900">XXL (44)</option>
+                      </>
+                    )}
+                  </select>
+                  <label
+                    htmlFor="sizeQuery"
+                    className="absolute left-1 -top-3.5 text-emerald-400 text-sm transition-all"
+                  >
+                    Rozmiar (EU)
+                  </label>
+                  <div className="absolute right-2 top-4 pointer-events-none text-slate-500 group-focus-within:text-emerald-400 transition-colors font-bold">
+                    <ChevronDown size={14} />
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div className="p-3 bg-slate-900/50 border border-slate-700 rounded-xl flex items-center gap-3 text-slate-300">
+                  <span className="text-sm">Akcesoria / Dodatki (Rozmiar Uniwersalny)</span>
+                </div>
+              )}
 
               {/* Przycisk Mocy */}
               <button
                 onClick={handleAnalyzeSilhouette}
-                disabled={!personBase64 || isAnalyzing || !sizeQuery.trim() || !genderQuery.trim()}
+                disabled={!personBase64 || isAnalyzing || (isSizeRequired && !sizeQuery.trim())}
                 className={`w-full relative group overflow-hidden rounded-xl py-4 font-bold text-lg text-white shadow-lg transition-all duration-300 hover:scale-[1.02] hover:shadow-indigo-500/25 active:scale-95
-                  ${(!personBase64 || isAnalyzing || !sizeQuery.trim() || !genderQuery.trim())
+                  ${(!personBase64 || isAnalyzing || (isSizeRequired && !sizeQuery.trim()))
                     ? 'bg-slate-800 text-slate-500 cursor-not-allowed grayscale'
                     : 'bg-gradient-to-r from-violet-600 to-indigo-600 shadow-glow'}`}
               >
@@ -407,8 +456,8 @@ export default function TryOnWidget() {
                     uiTitle={analysisResult?.uiTitle}
                     stylistComment={analysisResult?.stylistComment}
                     onSelectProduct={(url) => handleTryOn(url)}
-                    forbiddenKeywords={['torebka', 'kolczyki', 'szpilki']}
-                    size={sizeQuery}
+                    forbiddenKeywords={currentCategory === 'SHOES' ? [] : currentCategory === 'ACCESSORIES' ? [] : ['torebka', 'kolczyki', 'szpilki', 'buty']}
+                    size={isSizeRequired ? sizeQuery : undefined}
                   />
                 </div>
               ) : (
