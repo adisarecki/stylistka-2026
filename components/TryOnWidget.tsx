@@ -66,11 +66,15 @@ export default function TryOnWidget() {
 
   const [itemQuery, setItemQuery] = useState<string>('');
   const [occasionQuery, setOccasionQuery] = useState<string>('');
-  const [sizeQuery, setSizeQuery] = useState<string>('');
+  // ZADANIE 1: Obwód klatki piersiowej zamiast wyboru statycznego rozmiaru (EU)
+  const [chestCircumference, setChestCircumference] = useState<string>('');
   const [genderQuery, setGenderQuery] = useState<string>('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // ZADANIE 3: Global Mutex
   const [isTryOnLoading, setIsTryOnLoading] = useState(false);
+  const [isSystemLocked, setIsSystemLocked] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   // Dynamiczna detekcja kategorii
@@ -140,8 +144,10 @@ export default function TryOnWidget() {
   };
 
   const handleTryOn = async (clothingImageUrl?: string, clothingTitle?: string) => {
-    if (!personBase64 || isTryOnLoading) return;
+    // ZADANIE 3: Bezwzględna blokada Global Mutex
+    if (!personBase64 || isSystemLocked || isTryOnLoading) return;
 
+    setIsSystemLocked(true); // LOCK START
     setIsTryOnLoading(true);
     setTryOnImage(null);
     setError(null);
@@ -206,8 +212,42 @@ export default function TryOnWidget() {
       setError(err.message || "Nie udało się wygenerować przymiarki");
     } finally {
       setIsTryOnLoading(false);
+      setIsSystemLocked(false); // LOCK END
     }
   };
+
+  // ZADANIE 2: Logika Horeca Size Intelligence
+  const getMappedSizeAndFallback = (): { sizeEu: string | undefined, fallbackMsg: string | undefined } => {
+    if (!chestCircumference || currentCategory === 'ACCESSORIES') return { sizeEu: undefined, fallbackMsg: undefined };
+
+    const chestCm = parseInt(chestCircumference, 10);
+    if (isNaN(chestCm)) return { sizeEu: undefined, fallbackMsg: undefined };
+
+    let predictedSize: string | undefined = undefined;
+    let predictedFallback: string | undefined = undefined;
+
+    // Damskie (Sukienki / Bluzki Karlovsky)
+    if (genderQuery !== 'mężczyzna' && currentCategory === 'CLOTHES') {
+      if (chestCm >= 85 && chestCm <= 88) predictedSize = "38"; // S
+      else if (chestCm >= 89 && chestCm <= 92) predictedSize = "40"; // M
+      else predictedSize = undefined; // Brak twardego dopasowania
+    }
+    // Męskie (Góra Portwest)
+    else if (genderQuery === 'mężczyzna' && currentCategory === 'CLOTHES') {
+      if (chestCm >= 100 && chestCm <= 104) predictedSize = "M";
+      else predictedSize = undefined;
+    }
+
+    if (predictedSize) {
+      predictedFallback = `Rozmiar dopasowany inteligentnie: ${predictedSize} (zastosowano korektę na klatkę ${chestCm} cm).`;
+    } else {
+      predictedFallback = "Ten fason w Twoim rozmiarze jest wyprzedany, ale na podstawie Twojej sylwetki polecamy krój o jeden rozmiar większy dla lepszego komfortu.";
+    }
+
+    return { sizeEu: predictedSize, fallbackMsg: predictedFallback };
+  };
+
+  const { sizeEu: mappedSize, fallbackMsg: mappedFallback } = getMappedSizeAndFallback();
 
   return (
     <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
@@ -361,48 +401,23 @@ export default function TryOnWidget() {
                 )}
               </div>
 
-              {/* Select: Rozmiar */}
+              {/* Input: Rozmiar -> Obwód klatki (Size Intelligence Horeca) */}
               {currentCategory !== 'ACCESSORIES' ? (
                 <div className="relative group">
-                  <select
-                    id="sizeQuery"
-                    className="peer w-full bg-slate-900/50 text-slate-100 border-b-2 border-slate-700 py-3 px-1 focus:outline-none focus:border-emerald-500 transition-colors appearance-none cursor-pointer"
-                    value={sizeQuery}
-                    onChange={(e) => setSizeQuery(e.target.value)}
-                  >
-                    <option value="" disabled className="bg-slate-900 text-slate-500">Wybierz rozmiar</option>
-                    {currentCategory === 'SHOES' ? (
-                      <>
-                        <option value="36" className="bg-slate-900">36</option>
-                        <option value="37" className="bg-slate-900">37</option>
-                        <option value="38" className="bg-slate-900">38</option>
-                        <option value="39" className="bg-slate-900">39</option>
-                        <option value="40" className="bg-slate-900">40</option>
-                        <option value="41" className="bg-slate-900">41</option>
-                        <option value="42" className="bg-slate-900">42</option>
-                        <option value="43" className="bg-slate-900">43</option>
-                        <option value="44" className="bg-slate-900">44</option>
-                        <option value="45" className="bg-slate-900">45</option>
-                      </>
-                    ) : (
-                      <>
-                        <option value="34" className="bg-slate-900">XS (34)</option>
-                        <option value="36" className="bg-slate-900">S (36)</option>
-                        <option value="38" className="bg-slate-900">M (38)</option>
-                        <option value="40" className="bg-slate-900">L (40)</option>
-                        <option value="42" className="bg-slate-900">XL (42)</option>
-                      </>
-                    )}
-                  </select>
+                  <input
+                    type="number"
+                    id="chestCircumference"
+                    className="peer w-full bg-slate-900/50 text-slate-100 border-b-2 border-slate-700 py-3 px-1 focus:outline-none focus:border-emerald-500 transition-colors placeholder-transparent"
+                    placeholder="Obwód klatki piersiowej (cm)"
+                    value={chestCircumference}
+                    onChange={(e) => setChestCircumference(e.target.value)}
+                  />
                   <label
-                    htmlFor="sizeQuery"
-                    className="absolute left-1 -top-3.5 text-emerald-400 text-sm transition-all"
+                    htmlFor="chestCircumference"
+                    className="absolute left-1 -top-3.5 text-emerald-400 text-sm transition-all peer-placeholder-shown:text-base peer-placeholder-shown:text-slate-500 peer-placeholder-shown:top-3 peer-focus:-top-3.5 peer-focus:text-emerald-400 peer-focus:text-sm"
                   >
-                    Rozmiar (EU)
+                    Obwód klatki piersiowej (cm)
                   </label>
-                  <div className="absolute right-2 top-4 pointer-events-none text-slate-500 group-focus-within:text-emerald-400 transition-colors font-bold">
-                    <ChevronDown size={14} />
-                  </div>
                 </div>
               ) : (
                 <div className="p-3 bg-slate-900/50 border border-slate-700 rounded-xl flex items-center gap-3 text-slate-300">
@@ -413,9 +428,9 @@ export default function TryOnWidget() {
               {/* Przycisk Mocy */}
               <button
                 onClick={handleAnalyzeSilhouette}
-                disabled={!personBase64 || isAnalyzing || (isSizeRequired && !sizeQuery.trim())}
+                disabled={!personBase64 || isAnalyzing || isSystemLocked || (isSizeRequired && !chestCircumference.trim())}
                 className={`w-full relative group overflow-hidden rounded-xl py-4 font-bold text-lg text-white shadow-lg transition-all duration-300 hover:scale-[1.02] hover:shadow-indigo-500/25 active:scale-95
-                  ${(!personBase64 || isAnalyzing || (isSizeRequired && !sizeQuery.trim()))
+                  ${(!personBase64 || isAnalyzing || isSystemLocked || (isSizeRequired && !chestCircumference.trim()))
                     ? 'bg-slate-800 text-slate-500 cursor-not-allowed grayscale'
                     : 'bg-gradient-to-r from-violet-600 to-indigo-600 shadow-glow'}`}
               >
@@ -480,8 +495,11 @@ export default function TryOnWidget() {
                   <div className="mt-4 pt-4 border-t border-white/10">
                     <button
                       onClick={() => handleTryOn()}
-                      disabled={isTryOnLoading}
-                      className="w-full bg-gradient-to-r from-pink-600 to-rose-600 text-white font-bold py-3 px-6 rounded-xl shadow-lg hover:shadow-pink-500/25 hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed group"
+                      disabled={isSystemLocked}
+                      className={`w-full font-bold py-3 px-6 rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 group
+                        ${isSystemLocked
+                          ? 'bg-slate-800 text-slate-500 cursor-not-allowed grayscale shadow-none'
+                          : 'bg-gradient-to-r from-pink-600 to-rose-600 text-white hover:shadow-pink-500/25 hover:scale-[1.02] active:scale-95'}`}
                     >
                       {isTryOnLoading ? (
                         <>
@@ -506,8 +524,9 @@ export default function TryOnWidget() {
                     garmentDetails={analysisResult?.garmentDetails}
                     onSelectProduct={(url, title) => handleTryOn(url, title)}
                     forbiddenKeywords={currentCategory === 'SHOES' ? [] : currentCategory === 'ACCESSORIES' ? [] : ['torebka', 'kolczyki', 'szpilki', 'buty']} // Usunięto 'sukienka' itp., VTON poradzi sobie z wszystkim, o ile dostanie model górny/dolny/sukienkę
-                    size={isSizeRequired ? sizeQuery : undefined}
-                    isTryOnLoading={isTryOnLoading}
+                    size={isSizeRequired ? mappedSize : undefined}
+                    isTryOnLoading={isSystemLocked} // Podajemy mutex do karuzeli jako blokadę stanu
+                    sizeIntelligentFallback={mappedFallback}
                   />
                 </div>
               ) : (

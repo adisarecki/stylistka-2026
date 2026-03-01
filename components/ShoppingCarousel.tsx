@@ -25,7 +25,8 @@ export default function ShoppingCarousel({
   onSelectProduct,
   forbiddenKeywords = [],
   size,
-  isTryOnLoading = false
+  isTryOnLoading = false,
+  sizeIntelligentFallback
 }: {
   searchQuery: string,
   uiTitle?: string,
@@ -39,7 +40,8 @@ export default function ShoppingCarousel({
   onSelectProduct: (url: string, title?: string) => void,
   forbiddenKeywords?: string[],
   size?: string,
-  isTryOnLoading?: boolean
+  isTryOnLoading?: boolean,
+  sizeIntelligentFallback?: string
 }) {
   const { location } = useLocation();
   const [products, setProducts] = useState<Product[]>([]);
@@ -141,12 +143,12 @@ export default function ShoppingCarousel({
           </p>
         )}
 
-        {/* Graceful Fallback Message */}
-        {isAlternative && (
-          <div className="mt-4 p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl flex items-center gap-3 animate-fade-in-up">
-            <Tag className="text-amber-400 shrink-0" size={18} />
-            <p className="text-amber-200 text-xs md:text-sm font-medium">
-              Brak Twojego rozmiaru w głównych propozycjach. Oto wyselekcjonowane alternatywy dla Twojej sylwetki.
+        {/* Graceful Fallback Message & Size Intelligence */}
+        {(isAlternative || sizeIntelligentFallback) && (
+          <div className="mt-4 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl flex items-center gap-3 animate-fade-in-up">
+            <Tag className="text-emerald-400 shrink-0" size={18} />
+            <p className="text-emerald-200 text-xs md:text-sm font-medium">
+              {sizeIntelligentFallback || "Brak Twojego rozmiaru w głównych propozycjach. Oto wyselekcjonowane alternatywy dla Twojej sylwetki."}
             </p>
           </div>
         )}
