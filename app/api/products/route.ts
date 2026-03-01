@@ -31,9 +31,9 @@ export async function GET(req: Request) {
     console.log('KROK 1: Próba z twardym filtrem rozmiaru:', query);
 
     const callSerper = async (searchQuery: string, useModifiers: boolean = true) => {
-      // Wstrzyknięcie wymuszenia czystego zdjęcia z Google Images dla VTON
+      // Wstrzyknięcie Whitelisty i wykluczeń (Retail-Only Filter dla VTON)
       const finalQuery = useModifiers
-        ? `${searchQuery} packshot OR "zdjęcie produktowe" przodem "białe tło"`
+        ? `"${searchQuery}" (site:zalando.pl OR site:answear.com OR site:modivo.pl OR site:hm.com) -portfolio -fotograf -sesja -fotografia -usługi`
         : searchQuery;
 
       console.log('-> Serper Request Q:', finalQuery);
