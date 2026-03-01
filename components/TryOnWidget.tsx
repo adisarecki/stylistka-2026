@@ -217,7 +217,7 @@ export default function TryOnWidget() {
                       <div className="h-full bg-gradient-to-r from-violet-600 via-fuchsia-500 to-violet-600 animate-shimmer w-[200%] shadow-[0_0_15px_rgba(139,92,246,0.6)]"></div>
                     </div>
                     <p className="text-center text-violet-300 text-sm animate-pulse font-medium flex items-center justify-center gap-2">
-                      <Sparkles size={14} className="text-fuchsia-400" /> Twoja stylizacja jest generowana...
+                      <Sparkles size={14} className="text-fuchsia-400" /> Analizuję geometrię i dopasowanie...
                     </p>
                   </div>
                 ) : (

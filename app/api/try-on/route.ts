@@ -1,6 +1,15 @@
 import Replicate from "replicate";
 import { NextResponse } from "next/server";
 
+// ZADANIE 2: Niezawodna Detekcja Kategorii (Fallback)
+function detectGarmentCategory(title: string | undefined): 'upper_body' | 'lower_body' | 'dresses' {
+  if (!title) return "upper_body";
+  const t = title.toLowerCase();
+  if (t.includes("spodnie") || t.includes("spódnica") || t.includes("jeans") || t.includes("szort")) return "lower_body";
+  if (t.includes("sukienka") || t.includes("suknia")) return "dresses";
+  return "upper_body";
+}
+
 const replicate = new Replicate({
   auth: process.env.REPLICATE_API_TOKEN,
 });
@@ -14,13 +23,33 @@ export async function POST(req: Request) {
     console.log('Kategoria:', category);
     console.log('Produkt:', productTitle);
 
-    // ZADANIE 2: Konstrukcja "Żelaznego Promptu"
-    const basePrompt = `A realistic photo of a person wearing strictly the provided garment: ${productTitle || 'clothing'}. The garment must retain its exact original length, cut, and proportions. `;
-    const identityPrompt = "Preserve original body shape, pose, and face identity perfectly. Do not change the person's physical features. ";
-    const finalPrompt = basePrompt + identityPrompt + (bodyTypeModifier || "") + " photorealistic, 8k, natural lighting.";
+    // KROK 1: PIPELINE REMOVE BACKGROUND (ZADANIE 1)
+    console.log('--- PIPELINE: REMOVE BACKGROUND ---');
+    let processedClothingImage = clothingImage;
+    try {
+      // Model cjwbw/rembg (lub podobny szybki model z Replicate)
+      const rembgModel = "cjwbw/rembg:fb8af171cfa1616ddcf1242c093f9c46bcada5bad4c24d46248d146cfdada2ed";
+      const rembgOutput = await replicate.run(rembgModel, {
+        input: {
+          image: clothingImage
+        }
+      });
+      if (rembgOutput) {
+        processedClothingImage = String(rembgOutput);
+        console.log('SUCCESS: Usunięto tło pomyślnie.');
+      }
+    } catch (bgError: any) {
+      console.log('WARNING: Błąd usuwania tła. Używam oryginału jako fallback.', bgError.message);
+      // Nie zgłaszamy błędu żeby VTON mógł ruszyć mimo awarii rembg.
+    }
 
-    // ZADANIE 3: Negatywny Prompt
-    const negativePrompt = "wrong length, changed clothes, mutated hands, changed face, altered identity, bad proportions, bad fit, cartoon, illustration";
+    // ZADANIE 2: Hard-override kategorii za pomocą twardego parsera
+    const safeCategory = detectGarmentCategory(productTitle);
+    console.log('Bezpieczna kategoria (Override):', safeCategory);
+
+    // ZADANIE 3: "Żelazny Prompt" sterujący Replicate
+    const finalPrompt = "photorealistic try-on, correct proportions, preserve pose, do not change face, natural fit, correct sleeves alignment, high quality, 8k";
+    const negativePrompt = "wrong length, mutated, changed identity, cartoon, lowres, bad proportions, bad fit, background noise";
 
     // To jest aktualna i stabilna wersja modelu (Luty 2026)
     const modelVersion = "cuuupid/idm-vton:0513734a452173b8173e907e3a59d19a36266e55b48528559432bd21c7d7e985";
@@ -29,12 +58,12 @@ export async function POST(req: Request) {
     const output = await replicate.run(modelVersion, {
       input: {
         human_img: personImage,
-        garm_img: clothingImage,
+        garm_img: processedClothingImage, // Zdjęcie po Remove-BG
         garment_des: finalPrompt, // Dla starszych/standardowych IDM-VTON
         prompt: finalPrompt, // Czasami używane zamiennie w innych wersjach VTON
         negative_prompt: negativePrompt,
-        category: category === 'dresses' ? 'dresses' : (category || 'upper_body'),
-        force_dc: category === "dresses",
+        category: safeCategory === 'dresses' ? 'dresses' : safeCategory,
+        force_dc: safeCategory === "dresses",
         num_inference_steps: 30, // Standardowe nadpisywanie krokow w nowym VTON
         steps: 30, // Fallback klucza
         guidance_scale: 2.5,
