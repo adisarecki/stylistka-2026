@@ -22,19 +22,27 @@ export async function POST(req: Request) {
         garm_img: clothingImage,
         garment_des: "Suggested clothing",
         category: category === 'dresses' ? 'dresses' : (category || 'upper_body'),
-        force_dc: category === "dresses", 
+        force_dc: category === "dresses",
         steps: 30,
         seed: 42,
         crop: false
       }
     });
 
-    // FIX DLA [object Object]: Wyciągamy czysty link URL z tablicy Replicate
-    const resultUrl = Array.isArray(output) ? output[0] : output;
+    // FIX DLA [object Object]: Wyciągamy czysty url
+    let resultUrl = Array.isArray(output) ? output[0] : output;
 
-    console.log('SUKCES: Wygenerowano obraz:', resultUrl);
+    // Jeśli z jakiegoś powodu to nadal obiekt (np. z polem url/uri)
+    if (typeof resultUrl === 'object' && resultUrl !== null) {
+      resultUrl = resultUrl.url || resultUrl.uri || Object.values(resultUrl)[0] || String(resultUrl);
+    }
 
-    return NextResponse.json({ result: resultUrl });
+    // Gwarancja czystego stringa
+    const finalUrl = typeof resultUrl === 'string' ? resultUrl : String(resultUrl);
+
+    console.log('SUKCES: Wygenerowano obraz pomyślnie. [URL UKRYTY]');
+
+    return NextResponse.json({ result: finalUrl });
   } catch (error: any) {
     console.error("BŁĄD REPLICATE:", error.message);
     return NextResponse.json({ error: error.message }, { status: 500 });

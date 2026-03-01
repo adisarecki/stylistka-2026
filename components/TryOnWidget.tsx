@@ -163,9 +163,12 @@ export default function TryOnWidget() {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Błąd generowania przymiarki");
 
-      // Replicate zwraca URL (czasem w tablicy) - Fix dla [object Object]
-      const imageUrl = data.result?.[0] || data.result;
-      setTryOnResult(imageUrl);
+      // Wsparcie dla zsanicjonowanego stringa z API
+      let imageUrl = data.result;
+      if (typeof imageUrl === 'object' && imageUrl !== null) {
+        imageUrl = Object.values(imageUrl)[0] || String(imageUrl);
+      }
+      setTryOnResult(typeof imageUrl === 'string' ? imageUrl : String(imageUrl));
     } catch (err: any) {
       console.error("Try-On Error:", err);
       setError("Nie udało się wygenerować przymiarki: " + err.message);
@@ -201,6 +204,41 @@ export default function TryOnWidget() {
                 onUpload={handleUserUpload}
               />
             </div>
+
+            {/* Nowy układ VTON - Wynik pod skanerem */}
+            {(isTryOnLoading || tryOnResult) && (
+              <div className="mt-8 animate-fade-in-up">
+                {isTryOnLoading ? (
+                  <div className="mb-6 p-6 bg-slate-900/50 rounded-3xl border border-indigo-500/30 flex flex-col items-center justify-center">
+                    <div className="h-2 w-full max-w-xs bg-slate-800 rounded-full overflow-hidden relative mb-4">
+                      <div className="absolute inset-0 bg-violet-500/20 animate-pulse"></div>
+                      <div className="h-full bg-gradient-to-r from-violet-600 via-fuchsia-500 to-violet-600 animate-shimmer w-[200%] shadow-[0_0_15px_rgba(139,92,246,0.6)]"></div>
+                    </div>
+                    <p className="text-center text-violet-300 text-sm animate-pulse font-medium flex items-center justify-center gap-2">
+                      <Sparkles size={14} className="text-fuchsia-400" /> Twoja stylizacja jest generowana...
+                    </p>
+                  </div>
+                ) : (
+                  tryOnResult && (
+                    <div className="group">
+                      <h3 className="text-xl font-bold text-slate-100 mb-4 flex items-center gap-2">
+                        <Wand2 className="text-pink-400" /> Prawdopodobny wygląd:
+                      </h3>
+                      <div className="relative rounded-2xl overflow-hidden shadow-2xl border-2 border-white/10 group-hover:border-pink-500/50 transition-colors duration-500">
+                        <img
+                          src={tryOnResult}
+                          alt="Wirtualna przymiarka (VTON)"
+                          className="w-full h-auto object-cover transition-transform duration-700 group-hover:scale-105"
+                        />
+                        <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-transparent pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-4">
+                          <span className="text-white text-xs font-medium tracking-wide">Wygenerowano przez AI (IDM-VTON)</span>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                )}
+              </div>
+            )}
           </div>
         </div>
 
@@ -424,40 +462,7 @@ export default function TryOnWidget() {
                     <p className="text-xs text-slate-400 mt-2 text-center opacity-70">
                       *Generuje podgląd na przykładowej sukience AI
                     </p>
-
-                    {/* Animowany pasek postępu (Wow Factor) */}
-                    {isTryOnLoading && (
-                      <div className="mt-4 animate-fade-in-up">
-                        <div className="h-2 w-full bg-slate-800 rounded-full overflow-hidden relative">
-                          {/* Fioletowe światło pulsujące */}
-                          <div className="absolute inset-0 bg-violet-500/20 animate-pulse"></div>
-                          <div className="h-full bg-gradient-to-r from-violet-600 via-fuchsia-500 to-violet-600 animate-shimmer w-[200%] shadow-[0_0_15px_rgba(139,92,246,0.6)]"></div>
-                        </div>
-                        <p className="text-center text-violet-300 text-sm mt-3 animate-pulse font-medium flex items-center justify-center gap-2">
-                          <Sparkles size={14} className="text-fuchsia-400" /> Twoja stylizacja jest właśnie generowana w chmurze...
-                        </p>
-                      </div>
-                    )}
                   </div>
-
-                  {/* Wynik Przymiarki - HIBERNACJA WYBUDZONA */}
-                  {tryOnResult && (
-                    <div className="mt-2 animate-fade-in-up">
-                      <h4 className="text-lg font-bold text-slate-100 mb-3 flex items-center gap-2">
-                        <Sparkles className="text-pink-400" /> Twój nowy look:
-                      </h4>
-                      <div className="relative rounded-2xl overflow-hidden shadow-2xl border border-white/10 group">
-                        <img
-                          src={tryOnResult}
-                          alt="Wirtualna przymiarka"
-                          className="w-full h-auto object-cover transition-transform duration-700 group-hover:scale-105"
-                        />
-                        <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 to-transparent pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-4">
-                          <span className="text-white text-sm font-medium">Wygenerowano przez IDM-VTON</span>
-                        </div>
-                      </div>
-                    </div>
-                  )}
 
                   {/* Shopping Carousel - Tylko gdy mamy analizę */}
                   <ShoppingCarousel

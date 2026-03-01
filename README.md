@@ -132,6 +132,8 @@ Przed pierwszą aktualizacją produkcyjną lub w przypadku zmiany kluczy, należ
 
 ## Historia Rozwoju (Changelog)
 
+- **Hotfix (VTON UI & Rendering)**: Naprawiono błąd z ucinaniem/renderowaniem obrazów typu `[object Object]` z serwerów Replicate. Przebudowano układ UI – od teraz "Prawdopodobny wygląd" (wygenerowana przymiarka) ląduje z eleganckimi animacjami wprost pod skanerem sylwetki (na lewym panelu).
+
 - **Tip Top (Faza 1.5 i Faza 2.0)**: 
   - **Naprawa usterki (O2O)**: Linki "Lokalnych Perełek" w karuzeli od teraz poprawnie zintegrowane i otwierają zewnętrzne strony (np. Facebook) w nowych kartach.
   - **Wirtualna Przymierzalnia (VTON Beta)**: Wybudzono funkcjonalność przymierzalni IDM-VTON. Dodano przycisk "Przymierz" z dynamicznym wstrzykiwaniem kategorii ubioru do modelu Replicate.
