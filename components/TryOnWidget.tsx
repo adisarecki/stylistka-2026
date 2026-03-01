@@ -51,23 +51,26 @@ const processImage = (file: File): Promise<string> => {
 // ZADANIE 4 (MODUŁ 4): Typy i sylwetki (do Promptowania z Gemini AI)
 type BodyShape = 'JABŁKO' | 'GRUSZKA' | 'KLEPSYDRA' | 'KOLUMNA' | 'ROŻEK' | 'NIEZNANA';
 
+interface AnalysisResult {
+  uiTitle: string;
+  apiQuery: string;
+  stylistComment: string;
+  bodyShape: string;
+  strength: string;
+  advice: string;
+  avoid: string;
+  garmentDetails?: {
+    color?: string;
+    garmentType?: string;
+    cut?: string;
+    occasion?: string;
+  };
+  replicateCategory?: string;
+  replicatePrompt?: string;
+}
 export default function TryOnWidget() {
   const [personBase64, setPersonBase64] = useState<string | null>(null);
-  const [analysisResult, setAnalysisResult] = useState<{
-    benefit: string;
-    tip: string;
-    avoid: string;
-    uiTitle?: string;
-    apiQuery?: string;
-    stylistComment?: string;
-    bodyShape?: BodyShape;
-    garmentDetails?: {
-      color?: string;
-      garmentType?: string;
-      cut?: string;
-      occasion?: string;
-    };
-  } | null>(null);
+  const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
   const [tryOnImage, setTryOnImage] = useState<string | null>(null);
 
   const [itemQuery, setItemQuery] = useState<string>('');
@@ -155,8 +158,8 @@ export default function TryOnWidget() {
 
       // Bezpośrednie przypisanie pól z JSON (z fallbackami UI)
       setAnalysisResult({
-        benefit: data.strength || "Twoja sylwetka ma potencjał!",
-        tip: data.advice || "Eksperymentuj z fasonami.",
+        strength: data.strength || "Twoja sylwetka ma potencjał!",
+        advice: data.advice || "Eksperymentuj z fasonami.",
         avoid: data.avoid || "Unikaj zaburzeń proporcji.",
         uiTitle: data.uiTitle || "Wybrane dla Ciebie",
         apiQuery: data.apiQuery || itemQuery || "odzież",
@@ -187,7 +190,7 @@ export default function TryOnWidget() {
     const title = clothingTitle || analysisResult?.apiQuery || itemQuery || "Elegancka odzież";
 
     // ZADANIE 4: Moduł 4 (Ulepszone Prompty Sylwetki)
-    let bodyModifier = analysisResult?.tip ? ` ${analysisResult.tip}` : "";
+    let bodyModifier = analysisResult?.advice ? ` ${analysisResult.advice}` : "";
 
     const shape = analysisResult?.bodyShape;
     if (shape === 'JABŁKO') bodyModifier += " +empire +maskująca talia +luźny obrys ciała";
@@ -195,15 +198,9 @@ export default function TryOnWidget() {
     else if (shape === 'KLEPSYDRA') bodyModifier += " +dopasowana +podkreśla talię +sylwetka opięta";
     else if (shape === 'KOLUMNA') bodyModifier += " +warstwowa +objętość +struktura geometryczna";
     else if (shape === 'ROŻEK') bodyModifier += " +rozkloszowana dół +uwypukla biodra";
-
-    // Dynamiczna decyzja o kategorii dla Replicate
-    let replicateCategory = 'upper_body';
-    const qForCategory = (title || analysisResult?.apiQuery || itemQuery).toLowerCase();
-    if (qForCategory.includes('sukienk') || qForCategory.includes('dress') || qForCategory.includes('suknia')) {
-      replicateCategory = 'dresses';
-    } else if (qForCategory.includes('spodni') || qForCategory.includes('spódnic') || qForCategory.includes('szort') || qForCategory.includes('jeans')) {
-      replicateCategory = 'lower_body';
-    }
+    // 1. ZACIĄGNIĘCIE DANYCH Z SILNIKA REKOMENDACJI GEMINI (ZADANIE 2)
+    const replicateCategory = analysisResult?.replicateCategory || 'upper_body';
+    const replicatePrompt = analysisResult?.replicatePrompt || '';
 
     const fetchTryOnWithRetry = async (retries = 5): Promise<any> => {
       try {
@@ -214,7 +211,8 @@ export default function TryOnWidget() {
             uid: user?.uid,
             personImage: personBase64,
             clothingImage: selectedClothing,
-            category: replicateCategory,
+            category: replicateCategory,          // Twardy kanał AI (Gemini)
+            replicatePrompt: replicatePrompt,     // Twardy kanał AI (Gemini)
             productTitle: title,
             bodyTypeModifier: bodyModifier
           }),
@@ -592,7 +590,7 @@ export default function TryOnWidget() {
                     <h4 className="text-indigo-400 font-bold text-lg mb-2 flex items-center gap-2">
                       <Star className="text-yellow-400 fill-yellow-400 animate-pulse" size={20} /> Twój Atut
                     </h4>
-                    <p className="text-slate-100 leading-relaxed font-medium">{analysisResult.benefit}</p>
+                    <p className="text-slate-100 leading-relaxed font-medium">{analysisResult.strength}</p>
                   </div>
 
                   {/* Karta: Złota Porada */}
@@ -600,7 +598,7 @@ export default function TryOnWidget() {
                     <h4 className="text-amber-400 font-bold text-lg mb-2 flex items-center gap-2">
                       <Crown className="text-amber-500 fill-amber-500/20" size={20} /> Złota Porada
                     </h4>
-                    <p className="text-slate-100 leading-relaxed font-medium">{analysisResult.tip}</p>
+                    <p className="text-slate-100 leading-relaxed font-medium">{analysisResult.advice}</p>
                   </div>
 
                   {/* Karta: Unikaj */}

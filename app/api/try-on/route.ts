@@ -5,23 +5,7 @@ import { db, storage } from "@/lib/firebase";
 import { doc, getDoc, setDoc, deleteDoc } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 
-// Niezawodna Detekcja Kategorii na podstawie tytułu produktu i kategorii Gemini
-function resolveCategory(categoryFromFront: string | undefined, productTitle: string | undefined): 'upper_body' | 'lower_body' | 'dresses' {
-  // Priorytet: jawna kategoria z frontend (od Gemini lub dynamicznego parsera)
-  if (categoryFromFront) {
-    const c = categoryFromFront.toLowerCase();
-    if (c === 'dresses' || c === 'dress') return 'dresses';
-    if (c === 'lower_body' || c === 'bottom') return 'lower_body';
-    if (c === 'upper_body' || c === 'top') return 'upper_body';
-  }
-  // Fallback: parsowanie tytułu produktu
-  if (productTitle) {
-    const t = productTitle.toLowerCase();
-    if (t.includes("sukienka") || t.includes("suknia") || t.includes("dress")) return "dresses";
-    if (t.includes("spodnie") || t.includes("spódnica") || t.includes("jeans") || t.includes("szort") || t.includes("spódniczka")) return "lower_body";
-  }
-  return "upper_body";
-}
+
 
 const replicate = new Replicate({
   auth: process.env.REPLICATE_API_TOKEN,
@@ -36,7 +20,7 @@ export async function POST(req: Request) {
   let globalUid: string = '';
 
   try {
-    const { uid, personImage, clothingImage, category, productTitle, bodyTypeModifier } = await req.json();
+    const { uid, personImage, clothingImage, category, productTitle, bodyTypeModifier, replicatePrompt } = await req.json();
 
     if (!uid) {
       return NextResponse.json({ error: "Brak autoryzacji sesji. Zaloguj się by dokonać przymiarki." }, { status: 401 });
@@ -130,26 +114,19 @@ export async function POST(req: Request) {
     }
     await setDoc(sessionRef, { status: 'processing', timestamp: Date.now(), uid });
 
-    // === KROK 5: WYWOŁANIE IDM-VTON ===
-    // Używamy WYŁĄCZNIE oficjalnych pól schematu IDM-VTON
-    const safeCategory = resolveCategory(category, productTitle);
+    // === KROK 5: WYWOŁANIE IDM-VTON (Rura AI-to-AI z Gemini) ===
 
-    // ZADANIE 2: Automatyczne flagi dla Sukienek (isDress)
-    const isDress = safeCategory === 'dresses' || (productTitle || '').toLowerCase().includes('sukni');
+    // ZADANIE 2: Czyste przekazanie kategorii z frontendu (od Gemini)
+    const finalCategory = category === 'dresses' ? 'dresses' : category === 'lower_body' ? 'lower_body' : 'upper_body';
 
-    // ZADANIE 1 i 3: Dynamiczny garment_des z twardym modyfikatorem blokującym szelki/skracanie
-    let baseGarmentDes = productTitle || 'photorealistic clothing';
-
-    if (isDress) {
-      baseGarmentDes += ", long dress, full body dress, covering legs, highly detailed";
-    }
-
+    // ZADANIE 3: Blokada halucynacji - garment_des to teraz replicatePrompt z Gemini (połączony z modyfikatorem sylwetki)
+    const baseGarmentDes = replicatePrompt || productTitle || 'photorealistic clothing, highly detailed';
     const garment_des = bodyTypeModifier
       ? `${baseGarmentDes}. ${bodyTypeModifier}`
       : baseGarmentDes;
 
-    // Kategoria ostateczna — narzucona dla sukienek
-    const finalCategory = isDress ? 'dresses' : safeCategory;
+    // ZADANIE 2: Automatyczne force_dc dla sukienek zdefiniowane przez Gemini
+    const isDress = finalCategory === 'dresses';
 
     console.log(`[TRY-ON] Krok 5: Wywołanie IDM-VTON – kategoria: ${finalCategory}`);
     console.log(`[TRY-ON] isDress: ${isDress}`);

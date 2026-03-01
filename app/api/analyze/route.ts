@@ -53,15 +53,19 @@ export async function POST(req: Request) {
           "stylistComment": "profesjonalny komentarz (najwyzej zdanie)",
           "bodyShape": "JABŁKO",
           "strength": "atut widoczny na zdjęciu do pochwały",
-          "advice": "konkretna porada fasonowa, to powędruje również do silnika IDM-VTON jako modyfikator ubrań",
+          "advice": "konkretna porada fasonowa",
           "avoid": "czego unikać",
           "garmentDetails": {
              "color": "kolor po polsku",
              "garmentType": "typ ubrania po polsku",
              "cut": "krój ubrania",
              "occasion": "okazja podana z promptu"
-          }
-        }`
+          },
+          "replicateCategory": "string", // MUSI być: "upper_body", "lower_body" lub "dresses"
+          "replicatePrompt": "string" // Np. "long black evening gown, floor length, highly detailed, covering legs"
+        }
+
+        Instrukcja dodatkowa: Jako ekspert mody, dla każdego produktu wygeneruj precyzyjny opis po angielsku do modelu VTON (pole replicatePrompt) oraz określ kategorię (replicateCategory). Jeśli to sukienka, zawsze wymuszaj opis długości i zakrycia nóg (np. 'covering legs, covering thick straps, full body dress'). To zapobiegnie halucynacjom modelu obrazkowego.`
       },
     ];
 
@@ -84,7 +88,9 @@ export async function POST(req: Request) {
         strength: "Twoja sylwetka ma wiele atutów.",
         advice: text,
         avoid: "Zaburzone proporcje",
-        garmentDetails: {}
+        garmentDetails: {},
+        replicateCategory: "upper_body",
+        replicatePrompt: "photorealistic clothing, highly detailed"
       });
     }
 
