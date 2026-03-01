@@ -116,11 +116,21 @@ Każda zmiana wypchnięta do głównej gałęzi repozytorium (`git push origin m
 ### Konfiguracja Środowiska (Klucze API)
 Przed pierwszą aktualizacją produkcyjną lub w przypadku zmiany kluczy, należy upewnić się, że w panelu Vercel (**Settings -> Environment Variables**) skonfigurowane są następujące zmienne:
 
-| Klucz Środowiskowy      | Opis                                      |
-|-------------------------|-------------------------------------------|
-| `GOOGLE_API_KEY`        | Klucz AI (Gemini / Google AI Studio)      |
-| `REPLICATE_API_TOKEN`   | Token do obsługi modeli Replicate (VTON)  |
-| `SERPER_API_KEY`        | Klucz do silnika wyszukiwania Serper.dev  |
+| Klucz Środowiskowy                           | Opis                                           |
+|-----------------------------------------------|-------------------------------------------------|
+| `REPLICATE_API_TOKEN`                         | Token do obsługi modeli Replicate (VTON)       |
+| `SERPER_API_KEY`                              | Klucz do silnika wyszukiwania Serper.dev       |
+| `GEMINI_API_KEY`                              | Klucz AI (Gemini / Google AI Studio)           |
+| `NEXT_PUBLIC_FIREBASE_API_KEY`                | Klucz API Firebase (Web)                       |
+| `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN`            | Domena autoryzacji Firebase Auth               |
+| `NEXT_PUBLIC_FIREBASE_PROJECT_ID`             | ID projektu Firebase                           |
+| `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET`         | Bucket Storage Firebase                        |
+| `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID`    | Sender ID Firebase Cloud Messaging             |
+| `NEXT_PUBLIC_FIREBASE_APP_ID`                 | App ID Firebase Web                            |
+| `NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID`         | ID Google Analytics (opcjonalny)               |
+
+> [!CAUTION]
+> **Formatowanie kluczy:** Wartości zmiennych w panelu Vercel **NIE mogą** zawierać cudzysłowów (`"`), spacji ani przecinków. Wklejaj surowe wartości, np. `AIzaSyD64hk...` a **nie** `"AIzaSyD64hk..."`. Złe formatowanie powoduje `auth/invalid-api-key`.
 
 > [!IMPORTANT]
 > Plik `.env.local` jest automatycznie ignorowany przez Git (`.gitignore`). Klucze produkcyjne muszą zostać wprowadzone ręcznie w panelu Vercel, aby systemy AI i wyszukiwarka mogły poprawnie funkcjonować po wdrożeniu.
