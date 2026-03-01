@@ -157,6 +157,13 @@ Przed pierwszą aktualizacją produkcyjną lub w przypadku zmiany kluczy, należ
   - **Automatyczne Rozpoznawanie Płci**: Inteligencja AI samodzielnie wykrywa płeć po prompcie, a manualny przełącznik przeniesiono do "Opcji zaawansowanych".
   - **Inteligentna Kaskada Geolokalizacji**: Wbudowano logikę ustalania lokalizacji użytkownika metodą GPS -> IP (GeoJS API) -> Domyślny fallback (Będzin / Śląsk), z opcją ręcznego nadpisania w `LocationHeader`.
 
+- **2026-03-01 (Wdrożenie Systemów Antykryzysowych, Google Auth i RODO)**:
+  - Zaimplementowano **Firebase Authentication (Google Sign-In)** wymuszające autoryzację przed użyciem AI Skanera, z pełnoekranową "Tarczą Prywatności".
+  - Wdrożono **Privacy Guard** – baza operuje na Firebase Storage z cyklem życia plików dostosowanym do RODO. Zdjęcie sylwetki znajduje się w chmurze tylko na czas przetwarzania VTON w prywatnym folderze użytkownika (`users/{uid}/...`) i autodelete'uje się przy każdym scenariuszu.
+  - Zmieniono architekturę blokad – usunięto globalny lock na rzecz **Per-User Mutex** w Cloud Firestore (`active_sessions/{uid}`), uwalniając równoległe zapytania współbieżnych instancji przy zachowaniu solidnej ochrony przed 429 dla jednego konta.
+  - System zyskał nowy, dopieszczony reżim Retry (**Smart Retry**) na froncie: do 5 prób w odstępach 12-sekundowych w locie łagodzący odrzucenia z Replicate API (błąd 429 Rate Limit) z nałożonym usztywnieniem blokującym nieskończone pętle renderów (*React Side-Effect fix*).
+  - Wzbogacono silnik **Expert Prompting (Gemini)** o zwracanie parametru `bodyShape` (5 formalnych kategorii typu Jabłko, Gruszka, Rożek itd.) nakładającego automatyczne modyfikatory krojów (np. `+empire +maskująca talia`) prosto do API *idm-vton* na serwerze. Serper nakłada teraz rygorystyczne wytyczne `+packshot +"białe tło"` by omijać fotorealizm.
+
 ---
 *Dokumentacja aktualizowana regularnie pod nadzorem Mentora, zgodnie z wizją Wizjonera i wdrożona przez Antigravity.*
 #   s t y l i s t k a - 2 0 2 6  .
