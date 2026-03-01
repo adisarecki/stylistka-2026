@@ -147,6 +147,6 @@ Przed pierwszą aktualizacją produkcyjną lub w przypadku zmiany kluczy, należ
 
 ---
 *Dokumentacja aktualizowana regularnie pod nadzorem Mentora, zgodnie z wizją Wizjonera i wdrożona przez Antigravity.*
-#   s t y l i s t k a - 2 0 2 6 
+#   s t y l i s t k a - 2 0 2 6  .
  
  
