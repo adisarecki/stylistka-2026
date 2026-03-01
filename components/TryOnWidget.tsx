@@ -165,10 +165,14 @@ export default function TryOnWidget() {
 
       // Wsparcie dla zsanicjonowanego stringa z API
       let imageUrl = data.result;
+      if (Array.isArray(imageUrl)) imageUrl = imageUrl[0];
       if (typeof imageUrl === 'object' && imageUrl !== null) {
-        imageUrl = Object.values(imageUrl)[0] || String(imageUrl);
+        imageUrl = imageUrl.url || imageUrl.uri || Object.values(imageUrl)[0] || String(imageUrl);
       }
-      setTryOnResult(typeof imageUrl === 'string' ? imageUrl : String(imageUrl));
+
+      const finalStr = typeof imageUrl === 'string' ? imageUrl : String(imageUrl);
+      console.log("Otrzymany URL z API do wyrenderowania:", finalStr);
+      setTryOnResult(finalStr);
     } catch (err: any) {
       console.error("Try-On Error:", err);
       setError("Nie udało się wygenerować przymiarki: " + err.message);
@@ -225,11 +229,18 @@ export default function TryOnWidget() {
                         <Wand2 className="text-pink-400" /> Prawdopodobny wygląd:
                       </h3>
                       <div className="relative rounded-2xl overflow-hidden shadow-2xl border-2 border-white/10 group-hover:border-pink-500/50 transition-colors duration-500">
-                        <img
-                          src={tryOnResult}
-                          alt="Wirtualna przymiarka (VTON)"
-                          className="w-full h-auto object-cover transition-transform duration-700 group-hover:scale-105"
-                        />
+                        {typeof tryOnResult === 'string' && (tryOnResult.startsWith('http') || tryOnResult.startsWith('data:')) ? (
+                          <img
+                            src={tryOnResult}
+                            alt="Wirtualna przymiarka (VTON)"
+                            className="w-full h-auto object-cover transition-transform duration-700 group-hover:scale-105"
+                          />
+                        ) : (
+                          <div className="w-full h-64 bg-slate-900 flex items-center justify-center text-red-400 text-sm p-4 text-center">
+                            Wystąpił błąd ładowania obrazu z Replicate. Odśwież i spróbuj ponownie.<br />
+                            <span className="text-xs opacity-50 mt-2">{tryOnResult}</span >
+                          </div>
+                        )}
                         <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-transparent pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-4">
                           <span className="text-white text-xs font-medium tracking-wide">Wygenerowano przez AI (IDM-VTON)</span>
                         </div>
