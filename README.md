@@ -164,8 +164,14 @@ Przed pierwszą aktualizacją produkcyjną lub w przypadku zmiany kluczy, należ
   - System zyskał nowy, dopieszczony reżim Retry (**Smart Retry**) na froncie: do 5 prób w odstępach 12-sekundowych w locie łagodzący odrzucenia z Replicate API (błąd 429 Rate Limit) z nałożonym usztywnieniem blokującym nieskończone pętle renderów (*React Side-Effect fix*).
   - Wzbogacono silnik **Expert Prompting (Gemini)** o zwracanie parametru `bodyShape` (5 formalnych kategorii typu Jabłko, Gruszka, Rożek itd.) nakładającego automatyczne modyfikatory krojów (np. `+empire +maskująca talia`) prosto do API *idm-vton* na serwerze. Serper nakłada teraz rygorystyczne wytyczne `+packshot +"białe tło"` by omijać fotorealizm.
 
+- **2026-03-01 (Refaktoryzacja IDM-VTON Schema + Hotfix UI Auth)**:
+  - **IDM-VTON Strict Schema:** Przepisano `/api/try-on` od zera. Endpoint wysyła teraz wyłącznie oficjalne pola modelu: `human_img` (Firebase Storage link), `garm_img` (proxied przez Storage), `garment_des` (opis + modyfikatory sylwetki), `category` (dynamicznie: `upper_body` / `lower_body` / `dresses`).
+  - **Cache-First `try_on_results`:** Zmieniono kolekcję Firestore z `vton_cache` na `try_on_results`. Hash generowany stabilnie z `uid + garm_img URL + productTitle` (niezależny od niestabilnego base64). Wynik `uri` zapisywany po każdym sukcesie – przy ponownej przymiarce tej samej odzieży odpowiedź jest natychmiastowa z bazy.
+  - **Hotfix UI Auth:** Usunięto pełnoekranowy bloker logowania. Google Auth migruje teraz do panelu Skanera jako „Tarcza Prywatności" z dużym przyciskiem `Zaloguj z Google`, widocznym obok opcji wgrywania zdjęcia. Karuzela produktów wyświetla dla niezalogowanych przycisk `Zaloguj się z AI` zamiast `Przymierz`.
+  - **React Side-Effect Fix:** Przeniesiono wywołanie `fetch('/api/user-profile')` z ciała komponentu do hooka `useEffect`, eliminując nieskończone pętle bombardujące serwer przy każdym re-renderze.
+
 ---
-*Dokumentacja aktualizowana regularnie pod nadzorem Mentora, zgodnie z wizją Wizjonera i wdrożona przez Antigravity.*
+*Dokumentacja aktualizowana przy każdej ważnej zmianie, pod nadzorem Mentora, zgodnie z wizją Wizjonera i wdrożona przez Antigravity.*
 #   s t y l i s t k a - 2 0 2 6  .
  
  
