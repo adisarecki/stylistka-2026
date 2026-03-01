@@ -1,5 +1,7 @@
 import Replicate from "replicate";
 import { NextResponse } from "next/server";
+import { db, bucket } from "@/lib/firebaseAdmin";
+
 
 // ZADANIE 2: Niezawodna Detekcja Kategorii (Fallback)
 function detectGarmentCategory(title: string | undefined): 'upper_body' | 'lower_body' | 'dresses' {
@@ -23,14 +25,40 @@ export async function POST(req: Request) {
     console.log('Kategoria:', category);
     console.log('Produkt:', productTitle);
 
-    // KROK 0: IMAGE PROXY (HOTLINK OMINIĘCIE 403)
-    console.log('--- PIPELINE: IMAGE PROXY ---');
+    // KROK -1: FIRESTORE GLOBAL MUTEX (Zabezpieczenie przed błędem 429)
+    console.log('--- PIPELINE: FIRESTORE MUTEX ---');
+    // Generujemy syntetyczne IP docelowo, w prawdziwej aplikacji byłoby to np. localStorage UUID z Frontendu
+    // Ponieważ nie mamy pewności co do stanu frontendu, robimy symulowaną kolejkę na całą platformę "Global Lock"
+    const GLOBAL_SESSION_ID = 'singleton-vton-session';
+    const sessionRef = db.collection('active_sessions').doc(GLOBAL_SESSION_ID);
+
+    const sessionDoc = await sessionRef.get();
+    if (sessionDoc.exists && sessionDoc.data()?.status === 'processing') {
+      const lockData = sessionDoc.data();
+      const lockAge = Date.now() - (lockData?.timestamp || 0);
+
+      // Auto-unlock (Deadlock protection) po 3 minutach
+      if (lockAge < 180000) {
+        console.warn('MUTEX ZADZIAŁAŁ: Przerwano request. Stylistka zajęta.');
+        return NextResponse.json(
+          { error: "Wirtualna Stylistka jest aktualnie bardzo zajęta przez inną przymiarkę. Oczekaj chwileczkę...", mutexLocked: true },
+          { status: 409 }
+        );
+      } else {
+        console.log('MUTEX DEADLOCK: Sesja przestarzała. Nadpisuję i kontynuuję.');
+      }
+    }
+
+    // Zakluczenie zasobu Serwera
+    await sessionRef.set({ status: 'processing', timestamp: Date.now() });
+
+    // KROK 0: IMAGE PROXY (HOTLINK OMINIĘCIE 403 PRZEZ FIREBASE STORAGE)
+    console.log('--- PIPELINE: FIREBASE STORAGE PROXY ---');
     let proxiedClothingImage = clothingImage;
     if (clothingImage && clothingImage.startsWith('http')) {
       try {
         console.log(`Pobieranie w locie: ${clothingImage}`);
         const proxyRes = await fetch(clothingImage, {
-          // Udoskonalenie nagłówków do przejścia blokad Cloudflare dla hotlinkingu
           headers: {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
             'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8'
@@ -39,17 +67,34 @@ export async function POST(req: Request) {
 
         if (!proxyRes.ok) {
           console.warn(`IMAGE PROXY HTTP ALERT: ${proxyRes.status} dla pliku ${clothingImage}. Ostrzeżenie.`);
-          // Kontynuuj na zwykłym - serwer spróbuje bez proxy
         } else {
           const arrayBuffer = await proxyRes.arrayBuffer();
           const mimeType = proxyRes.headers.get('content-type') || 'image/jpeg';
-          const base64Data = Buffer.from(arrayBuffer).toString('base64');
-          proxiedClothingImage = `data:${mimeType};base64,${base64Data}`;
-          console.log('SUKCES: Plik odzieży przeniesiony do izolowanego Base64 Data URI.');
+
+          // Generowanie unikalnej nazwy i rozszerzenia w Bucketcie
+          const ext = mimeType.split('/')[1] || 'jpg';
+          const fileId = `garm_proxy_${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`;
+
+          const file = bucket.file(`proxied/${fileId}`);
+
+          // Bezpieczny upload buforu ArrayBuffer (Konwersja na Buffer)
+          const buffer = Buffer.from(arrayBuffer);
+          await file.save(buffer, {
+            metadata: { contentType: mimeType }
+          });
+
+          // Generowanie publicznego Signed URL (Odczyt na 2 godziny dla serwerów Replicate)
+          const [signedUrl] = await file.getSignedUrl({
+            action: 'read',
+            expires: Date.now() + 1000 * 60 * 60 * 2, // 2 Godziny
+          });
+
+          proxiedClothingImage = signedUrl;
+          console.log(`SUKCES: Plik odzieży uploadowany na Firebase: ${fileId}`);
         }
 
       } catch (proxyErr: any) {
-        console.warn('IMAGE PROXY FATAL ERROR: Nie potrafiono wczytać zdjęcia bezpośrednio.', proxyErr.message);
+        console.warn('IMAGE PROXY FATAL ERROR: Nie potrafiono uploadować zdjęcia na Storage.', proxyErr.message);
       }
     }
 
@@ -107,6 +152,9 @@ export async function POST(req: Request) {
 
     console.log('SUKCES: Wygenerowano obraz pomyślnie.');
 
+    // KROK 5: CLEANUP Mutexa - zwolnienie zasobu na sukces
+    await db.collection('active_sessions').doc('singleton-vton-session').delete();
+
     return NextResponse.json({ imageUrl: finalImageUrl });
   } catch (error: any) {
     // ZADANIE 1: Bezpieczny Backend (Ochrona przed limitem Burst=1)
@@ -119,6 +167,12 @@ export async function POST(req: Request) {
     }
 
     console.error("BŁĄD REPLICATE:", error.message);
+
+    // KROK 5: CLEANUP Mutexa - zwolnienie zasobu w errorze twardym
+    try {
+      await db.collection('active_sessions').doc('singleton-vton-session').delete();
+    } catch (cleanupErr) { console.error('MUTEX CLEANUP ERROR', cleanupErr) }
+
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

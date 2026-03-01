@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Sparkles, Wand2, Loader2, ShieldCheck, Lightbulb, AlertTriangle, ScanLine, Crown, OctagonX, Star, ChevronDown } from 'lucide-react';
 import ImageUploader from './ImageUploader';
 import ShoppingCarousel from './ShoppingCarousel';
@@ -76,6 +76,18 @@ export default function TryOnWidget() {
   const [isTryOnLoading, setIsTryOnLoading] = useState(false);
   const [isAppProcessing, setIsAppProcessing] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
+
+  // ZADANIE 4: System tworzenia anonimowych identyfikatorów userId
+  const [userId, setUserId] = useState<string | null>(null);
+
+  useEffect(() => {
+    let storedId = localStorage.getItem('stylistka_user_id');
+    if (!storedId) {
+      storedId = `user_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+      localStorage.setItem('stylistka_user_id', storedId);
+    }
+    setUserId(storedId);
+  }, []);
 
   // Dynamiczna detekcja kategorii
   const detectCategory = (query: string) => {
@@ -268,6 +280,15 @@ export default function TryOnWidget() {
       fallbackMsgDraft = `Dopasowaliśmy rozmiar ${predictedSize}. Dostępne również: ${alt1}, ${alt2}`;
     } else if (predictedSize) {
       fallbackMsgDraft = `Dopasowaliśmy rozmiar ${predictedSize}.`;
+    }
+
+    // Cichy zapis profilowy do bazy Firebase (Fire & Forget)
+    if (predictedSize && userId && !isAnalyzing) {
+      fetch('/api/user-profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, zalandoSize: predictedSize, chestCm: chestCm })
+      }).catch(() => { });
     }
 
     return { sizeEu: predictedSize, sizeAlternative1: alt1, sizeAlternative2: alt2, fallbackMsg: fallbackMsgDraft };
