@@ -216,38 +216,64 @@ export default function TryOnWidget() {
     }
   };
 
-  // ZADANIE 2: Logika Horeca Size Intelligence
-  const getMappedSizeAndFallback = (): { sizeEu: string | undefined, fallbackMsg: string | undefined } => {
-    if (!chestCircumference || currentCategory === 'ACCESSORIES') return { sizeEu: undefined, fallbackMsg: undefined };
+  // ZADANIE 1: Definicja Skali Zalando
+  const ZALANDO_NUMERIC = ["26", "28", "30", "32", "34", "36", "38", "40", "42", "44", "46", "48", "50", "52", "54", "56", "58", "60", "62", "64"];
+  const ZALANDO_ALPHA = ["XXS", "XS", "S", "M", "L", "XL", "XXL (2XL)", "3XL", "4XL", "5XL"];
+
+  // ZADANIE 2 & 3: Size Intelligence (Zalando) + Logika Sąsiadów
+  const getMappedSizeAndFallback = (): { sizeEu: string | undefined, sizeAlternative1: string | undefined, sizeAlternative2: string | undefined, fallbackMsg: string | undefined } => {
+    if (!chestCircumference || currentCategory === 'ACCESSORIES') return { sizeEu: undefined, sizeAlternative1: undefined, sizeAlternative2: undefined, fallbackMsg: undefined };
 
     const chestCm = parseInt(chestCircumference, 10);
-    if (isNaN(chestCm)) return { sizeEu: undefined, fallbackMsg: undefined };
+    if (isNaN(chestCm)) return { sizeEu: undefined, sizeAlternative1: undefined, sizeAlternative2: undefined, fallbackMsg: undefined };
 
     let predictedSize: string | undefined = undefined;
-    let predictedFallback: string | undefined = undefined;
+    let fallbackMsgDraft: string | undefined = undefined;
+    let alt1: string | undefined = undefined;
+    let alt2: string | undefined = undefined;
 
-    // Damskie (Sukienki / Bluzki Karlovsky)
+    // Damskie (Sukienki / Bluzki - Skala Numeryczna)
     if (genderQuery !== 'mężczyzna' && currentCategory === 'CLOTHES') {
-      if (chestCm >= 85 && chestCm <= 88) predictedSize = "38"; // S
-      else if (chestCm >= 89 && chestCm <= 92) predictedSize = "40"; // M
-      else predictedSize = undefined; // Brak twardego dopasowania
+      if (chestCm < 80) predictedSize = "34";
+      else if (chestCm >= 80 && chestCm <= 84) predictedSize = "36";
+      else if (chestCm >= 85 && chestCm <= 88) predictedSize = "38";
+      else if (chestCm >= 89 && chestCm <= 92) predictedSize = "40";
+      else if (chestCm >= 93 && chestCm <= 96) predictedSize = "42";
+      else if (chestCm >= 97 && chestCm <= 100) predictedSize = "44";
+      else if (chestCm > 100 && chestCm <= 106) predictedSize = "46";
+      else if (chestCm > 106) predictedSize = "48";
+
+      if (predictedSize) {
+        const index = ZALANDO_NUMERIC.indexOf(predictedSize);
+        if (index > 0) alt1 = ZALANDO_NUMERIC[index - 1]; // np. 36
+        if (index < ZALANDO_NUMERIC.length - 1) alt2 = ZALANDO_NUMERIC[index + 1]; // np. 40
+      }
     }
-    // Męskie (Góra Portwest)
+    // Męskie (Góra Portwest - Skala Alfa)
     else if (genderQuery === 'mężczyzna' && currentCategory === 'CLOTHES') {
-      if (chestCm >= 100 && chestCm <= 104) predictedSize = "M";
-      else predictedSize = undefined;
+      if (chestCm < 92) predictedSize = "S";
+      else if (chestCm >= 92 && chestCm <= 96) predictedSize = "M";
+      else if (chestCm >= 97 && chestCm <= 104) predictedSize = "L";
+      else if (chestCm >= 105 && chestCm <= 112) predictedSize = "XL";
+      else if (chestCm > 112) predictedSize = "XXL (2XL)";
+
+      if (predictedSize) {
+        const index = ZALANDO_ALPHA.indexOf(predictedSize);
+        if (index > 0) alt1 = ZALANDO_ALPHA[index - 1];
+        if (index < ZALANDO_ALPHA.length - 1) alt2 = ZALANDO_ALPHA[index + 1];
+      }
     }
 
-    if (predictedSize) {
-      predictedFallback = `Rozmiar dopasowany inteligentnie: ${predictedSize} (zastosowano korektę na klatkę ${chestCm} cm).`;
-    } else {
-      predictedFallback = "Ten fason w Twoim rozmiarze jest wyprzedany, ale na podstawie Twojej sylwetki polecamy krój o jeden rozmiar większy dla lepszego komfortu.";
+    if (predictedSize && alt1 && alt2) {
+      fallbackMsgDraft = `Twój idealny rozmiar to ${predictedSize}, ale ten fason świetnie leży też w rozmiarach ${alt1} (bardziej dopasowany) oraz ${alt2} (większy komfort). Oto wyselekcjonowane propozycje dla Ciebie.`;
+    } else if (predictedSize) {
+      fallbackMsgDraft = `Rozmiar dopasowany inteligentnie: ${predictedSize} (zastosowano korektę na klatkę ${chestCm} cm).`;
     }
 
-    return { sizeEu: predictedSize, fallbackMsg: predictedFallback };
+    return { sizeEu: predictedSize, sizeAlternative1: alt1, sizeAlternative2: alt2, fallbackMsg: fallbackMsgDraft };
   };
 
-  const { sizeEu: mappedSize, fallbackMsg: mappedFallback } = getMappedSizeAndFallback();
+  const { sizeEu: mappedSize, sizeAlternative1: sizeAlt1, sizeAlternative2: sizeAlt2, fallbackMsg: mappedFallback } = getMappedSizeAndFallback();
 
   return (
     <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
@@ -525,6 +551,8 @@ export default function TryOnWidget() {
                     onSelectProduct={(url, title) => handleTryOn(url, title)}
                     forbiddenKeywords={currentCategory === 'SHOES' ? [] : currentCategory === 'ACCESSORIES' ? [] : ['torebka', 'kolczyki', 'szpilki', 'buty']} // Usunięto 'sukienka' itp., VTON poradzi sobie z wszystkim, o ile dostanie model górny/dolny/sukienkę
                     size={isSizeRequired ? mappedSize : undefined}
+                    sizeAlternative1={isSizeRequired ? sizeAlt1 : undefined}
+                    sizeAlternative2={isSizeRequired ? sizeAlt2 : undefined}
                     isTryOnLoading={isSystemLocked} // Podajemy mutex do karuzeli jako blokadę stanu
                     sizeIntelligentFallback={mappedFallback}
                   />

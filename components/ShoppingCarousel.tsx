@@ -25,6 +25,8 @@ export default function ShoppingCarousel({
   onSelectProduct,
   forbiddenKeywords = [],
   size,
+  sizeAlternative1,
+  sizeAlternative2,
   isTryOnLoading = false,
   sizeIntelligentFallback
 }: {
@@ -40,6 +42,8 @@ export default function ShoppingCarousel({
   onSelectProduct: (url: string, title?: string) => void,
   forbiddenKeywords?: string[],
   size?: string,
+  sizeAlternative1?: string,
+  sizeAlternative2?: string,
   isTryOnLoading?: boolean,
   sizeIntelligentFallback?: string
 }) {
@@ -89,7 +93,16 @@ export default function ShoppingCarousel({
             if (partner.categories && !partner.categories.includes(currentCategory)) return false;
 
             // Check size availability (if size is provided and partner has specific sizes)
-            if (size && partner.availableSizes && !partner.availableSizes.includes(size)) return false;
+            // ZADANIE 3: Logika Sąsiadujących Rozmiarów u partnerów
+            if (size && partner.availableSizes) {
+              const hasMainSize = partner.availableSizes.includes(size);
+              const hasAlt1 = sizeAlternative1 && partner.availableSizes.includes(sizeAlternative1);
+              const hasAlt2 = sizeAlternative2 && partner.availableSizes.includes(sizeAlternative2);
+
+              if (!hasMainSize && !hasAlt1 && !hasAlt2) {
+                return false; // Partner nie posiada ani docelowego, ani żadnego z bezpiecznych alternatyw.
+              }
+            }
 
             return true;
           });
