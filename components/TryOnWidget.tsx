@@ -74,7 +74,7 @@ export default function TryOnWidget() {
 
   // ZADANIE 3: Global Mutex
   const [isTryOnLoading, setIsTryOnLoading] = useState(false);
-  const [isSystemLocked, setIsSystemLocked] = useState(false);
+  const [isAppProcessing, setIsAppProcessing] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   // Dynamiczna detekcja kategorii
@@ -144,10 +144,10 @@ export default function TryOnWidget() {
   };
 
   const handleTryOn = async (clothingImageUrl?: string, clothingTitle?: string) => {
-    // ZADANIE 3: Bezwzględna blokada Global Mutex
-    if (!personBase64 || isSystemLocked || isTryOnLoading) return;
+    // ZADANIE 3: Bezwzględna blokada Global Mutex (isAppProcessing)
+    if (!personBase64 || isAppProcessing || isTryOnLoading) return;
 
-    setIsSystemLocked(true); // LOCK START
+    setIsAppProcessing(true); // LOCK START
     setIsTryOnLoading(true);
     setTryOnImage(null);
     setError(null);
@@ -212,7 +212,7 @@ export default function TryOnWidget() {
       setError(err.message || "Nie udało się wygenerować przymiarki");
     } finally {
       setIsTryOnLoading(false);
-      setIsSystemLocked(false); // LOCK END
+      setIsAppProcessing(false); // LOCK END
     }
   };
 
@@ -265,9 +265,9 @@ export default function TryOnWidget() {
     }
 
     if (predictedSize && alt1 && alt2) {
-      fallbackMsgDraft = `Twój idealny rozmiar to ${predictedSize}, ale ten fason świetnie leży też w rozmiarach ${alt1} (bardziej dopasowany) oraz ${alt2} (większy komfort). Oto wyselekcjonowane propozycje dla Ciebie.`;
+      fallbackMsgDraft = `Dopasowaliśmy rozmiar ${predictedSize}. Dostępne również: ${alt1}, ${alt2}`;
     } else if (predictedSize) {
-      fallbackMsgDraft = `Rozmiar dopasowany inteligentnie: ${predictedSize} (zastosowano korektę na klatkę ${chestCm} cm).`;
+      fallbackMsgDraft = `Dopasowaliśmy rozmiar ${predictedSize}.`;
     }
 
     return { sizeEu: predictedSize, sizeAlternative1: alt1, sizeAlternative2: alt2, fallbackMsg: fallbackMsgDraft };
@@ -454,9 +454,9 @@ export default function TryOnWidget() {
               {/* Przycisk Mocy */}
               <button
                 onClick={handleAnalyzeSilhouette}
-                disabled={!personBase64 || isAnalyzing || isSystemLocked || (isSizeRequired && !chestCircumference.trim())}
+                disabled={!personBase64 || isAnalyzing || isAppProcessing || (isSizeRequired && !chestCircumference.trim())}
                 className={`w-full relative group overflow-hidden rounded-xl py-4 font-bold text-lg text-white shadow-lg transition-all duration-300 hover:scale-[1.02] hover:shadow-indigo-500/25 active:scale-95
-                  ${(!personBase64 || isAnalyzing || isSystemLocked || (isSizeRequired && !chestCircumference.trim()))
+                  ${(!personBase64 || isAnalyzing || isAppProcessing || (isSizeRequired && !chestCircumference.trim()))
                     ? 'bg-slate-800 text-slate-500 cursor-not-allowed grayscale'
                     : 'bg-gradient-to-r from-violet-600 to-indigo-600 shadow-glow'}`}
               >
@@ -521,9 +521,9 @@ export default function TryOnWidget() {
                   <div className="mt-4 pt-4 border-t border-white/10">
                     <button
                       onClick={() => handleTryOn()}
-                      disabled={isSystemLocked}
+                      disabled={isAppProcessing}
                       className={`w-full font-bold py-3 px-6 rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 group
-                        ${isSystemLocked
+                        ${isAppProcessing
                           ? 'bg-slate-800 text-slate-500 cursor-not-allowed grayscale shadow-none'
                           : 'bg-gradient-to-r from-pink-600 to-rose-600 text-white hover:shadow-pink-500/25 hover:scale-[1.02] active:scale-95'}`}
                     >
@@ -553,7 +553,7 @@ export default function TryOnWidget() {
                     size={isSizeRequired ? mappedSize : undefined}
                     sizeAlternative1={isSizeRequired ? sizeAlt1 : undefined}
                     sizeAlternative2={isSizeRequired ? sizeAlt2 : undefined}
-                    isTryOnLoading={isSystemLocked} // Podajemy mutex do karuzeli jako blokadę stanu
+                    isTryOnLoading={isAppProcessing} // Podajemy mutex do karuzeli jako blokadę stanu
                     sizeIntelligentFallback={mappedFallback}
                   />
                 </div>
