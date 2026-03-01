@@ -7,23 +7,37 @@ const replicate = new Replicate({
 
 export async function POST(req: Request) {
   try {
-    const { personImage, clothingImage, category } = await req.json();
+    const { personImage, clothingImage, category, productTitle, bodyTypeModifier } = await req.json();
 
     // Logowanie diagnostyczne dla terminala
     console.log('--- START PRZYMIERZALNI ---');
     console.log('Kategoria:', category);
+    console.log('Produkt:', productTitle);
+
+    // ZADANIE 2: Konstrukcja "Żelaznego Promptu"
+    const basePrompt = `A realistic photo of a person wearing strictly the provided garment: ${productTitle || 'clothing'}. The garment must retain its exact original length, cut, and proportions. `;
+    const identityPrompt = "Preserve original body shape, pose, and face identity perfectly. Do not change the person's physical features. ";
+    const finalPrompt = basePrompt + identityPrompt + (bodyTypeModifier || "") + " photorealistic, 8k, natural lighting.";
+
+    // ZADANIE 3: Negatywny Prompt
+    const negativePrompt = "wrong length, changed clothes, mutated hands, changed face, altered identity, bad proportions, bad fit, cartoon, illustration";
 
     // To jest aktualna i stabilna wersja modelu (Luty 2026)
     const modelVersion = "cuuupid/idm-vton:0513734a452173b8173e907e3a59d19a36266e55b48528559432bd21c7d7e985";
 
+    // ZADANIE 4: Przekazanie zaawansowanego payloadu
     const output = await replicate.run(modelVersion, {
       input: {
         human_img: personImage,
         garm_img: clothingImage,
-        garment_des: "Suggested clothing",
+        garment_des: finalPrompt, // Dla starszych/standardowych IDM-VTON
+        prompt: finalPrompt, // Czasami używane zamiennie w innych wersjach VTON
+        negative_prompt: negativePrompt,
         category: category === 'dresses' ? 'dresses' : (category || 'upper_body'),
         force_dc: category === "dresses",
-        steps: 30,
+        num_inference_steps: 30, // Standardowe nadpisywanie krokow w nowym VTON
+        steps: 30, // Fallback klucza
+        guidance_scale: 2.5,
         seed: 42,
         crop: false
       }

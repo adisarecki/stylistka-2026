@@ -132,13 +132,15 @@ export default function TryOnWidget() {
     }
   };
 
-  const handleTryOn = async (clothingImageUrl?: string) => {
+  const handleTryOn = async (clothingImageUrl?: string, clothingTitle?: string) => {
     if (!personBase64) return;
     setIsTryOnLoading(true);
     setTryOnImage(null);
 
     // Użyj przekazanego URL lub domyślnego
     const selectedClothing = clothingImageUrl || "https://raw.githubusercontent.com/yisol/IDM-VTON/main/asserts/examples/garments/00055_00.jpg";
+    const title = clothingTitle || analysisResult?.apiQuery || itemQuery || "Elegancka odzież";
+    const bodyModifier = analysisResult?.tip ? ` ${analysisResult.tip}` : "";
 
     // Dynamiczna decyzja o kategorii dla Replicate
     let replicateCategory = 'upper_body';
@@ -156,7 +158,9 @@ export default function TryOnWidget() {
         body: JSON.stringify({
           personImage: personBase64,
           clothingImage: selectedClothing,
-          category: replicateCategory
+          category: replicateCategory,
+          productTitle: title,
+          bodyTypeModifier: bodyModifier
         }),
       });
 
@@ -469,8 +473,8 @@ export default function TryOnWidget() {
                     searchQuery={analysisResult?.apiQuery || itemQuery || "Elegancka odzież"}
                     uiTitle={analysisResult?.uiTitle}
                     stylistComment={analysisResult?.stylistComment}
-                    onSelectProduct={(url) => handleTryOn(url)}
-                    forbiddenKeywords={currentCategory === 'SHOES' ? [] : currentCategory === 'ACCESSORIES' ? [] : ['torebka', 'kolczyki', 'szpilki', 'buty']}
+                    onSelectProduct={(url, title) => handleTryOn(url, title)}
+                    forbiddenKeywords={currentCategory === 'SHOES' ? [] : currentCategory === 'ACCESSORIES' ? [] : ['torebka', 'kolczyki', 'szpilki', 'buty']} // Usunięto 'sukienka' itp., VTON poradzi sobie z wszystkim, o ile dostanie model górny/dolny/sukienkę
                     size={isSizeRequired ? sizeQuery : undefined}
                   />
                 </div>
