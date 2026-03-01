@@ -5,14 +5,6 @@ import { Sparkles, Wand2, Loader2, ShieldCheck, Lightbulb, AlertTriangle, ScanLi
 import ImageUploader from './ImageUploader';
 import ShoppingCarousel from './ShoppingCarousel';
 
-// ZADANIE 3: Kolejka Zapytań (Rozwiązanie PRO na limit burst=1 API Replicate)
-let tryOnQueue = Promise.resolve();
-
-function enqueueTryOn(task: () => Promise<void>) {
-  tryOnQueue = tryOnQueue.then(task).catch(console.error);
-  return tryOnQueue;
-}
-
 // Helper: Optymalizacja obrazu do formatu produkcyjnego
 const processImage = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
@@ -140,29 +132,28 @@ export default function TryOnWidget() {
     }
   };
 
-  const handleTryOn = (clothingImageUrl?: string, clothingTitle?: string) => {
+  const handleTryOn = async (clothingImageUrl?: string, clothingTitle?: string) => {
     if (!personBase64 || isTryOnLoading) return;
 
-    // ZADANIE 3: Enqueue chroniący przed burst=1
-    enqueueTryOn(async () => {
-      setIsTryOnLoading(true);
-      setTryOnImage(null);
-      setError(null);
+    setIsTryOnLoading(true);
+    setTryOnImage(null);
+    setError(null);
 
-      // Użyj przekazanego URL lub domyślnego
-      const selectedClothing = clothingImageUrl || "https://raw.githubusercontent.com/yisol/IDM-VTON/main/asserts/examples/garments/00055_00.jpg";
-      const title = clothingTitle || analysisResult?.apiQuery || itemQuery || "Elegancka odzież";
-      const bodyModifier = analysisResult?.tip ? ` ${analysisResult.tip}` : "";
+    // Użyj przekazanego URL lub domyślnego
+    const selectedClothing = clothingImageUrl || "https://raw.githubusercontent.com/yisol/IDM-VTON/main/asserts/examples/garments/00055_00.jpg";
+    const title = clothingTitle || analysisResult?.apiQuery || itemQuery || "Elegancka odzież";
+    const bodyModifier = analysisResult?.tip ? ` ${analysisResult.tip}` : "";
 
-      // Dynamiczna decyzja o kategorii dla Replicate
-      let replicateCategory = 'upper_body';
-      const qForCategory = (analysisResult?.apiQuery || itemQuery).toLowerCase();
-      if (qForCategory.includes('sukienk') || qForCategory.includes('dress')) {
-        replicateCategory = 'dresses';
-      } else if (qForCategory.includes('spodni') || qForCategory.includes('spódnic') || qForCategory.includes('szort') || qForCategory.includes('jeans')) {
-        replicateCategory = 'lower_body';
-      }
+    // Dynamiczna decyzja o kategorii dla Replicate
+    let replicateCategory = 'upper_body';
+    const qForCategory = (title || analysisResult?.apiQuery || itemQuery).toLowerCase();
+    if (qForCategory.includes('sukienk') || qForCategory.includes('dress') || qForCategory.includes('suknia')) {
+      replicateCategory = 'dresses';
+    } else if (qForCategory.includes('spodni') || qForCategory.includes('spódnic') || qForCategory.includes('szort') || qForCategory.includes('jeans')) {
+      replicateCategory = 'lower_body';
+    }
 
+    const fetchTryOnWithRetry = async (retries = 1): Promise<any> => {
       try {
         const response = await fetch('/api/try-on', {
           method: 'POST',
@@ -178,24 +169,37 @@ export default function TryOnWidget() {
 
         const data = await response.json();
 
-        // Specjalna obsługa Rate Limit (429) rzuconego celowo przez backend
+        // ZADANIE 2: Smart Retry na Froncie
         if (response.status === 429 || data.error === "RATE_LIMIT") {
-          throw new Error("Wirtualna stylistka jest w tej chwili mocno obciążona. Poczekaj kilka sekund i kliknij ponownie.");
+          if (retries > 0) {
+            console.log("Limit Replicate (429). Czekam 12 sekund...");
+            await new Promise(r => setTimeout(r, 12000)); // Czekamy NA FRONCIE, nie na serwerze!
+            return fetchTryOnWithRetry(retries - 1); // Automatyczny retry
+          } else {
+            throw new Error("Wirtualna stylistka jest przeciążona. Spróbuj ponownie za chwilę.");
+          }
         }
 
         if (!response.ok) throw new Error(data.error || "Błąd generowania przymiarki");
-
-        // ZADANIE 2: Wymuszenie stringa przez interpolację
-        const cleanStringUrl = `${data.imageUrl}`;
-        console.log("Czysty URL do wyrenderowania:", cleanStringUrl);
-        setTryOnImage(cleanStringUrl);
-      } catch (err: any) {
-        console.error("Try-On Error:", err);
-        setError(err.message || "Nie udało się wygenerować przymiarki");
-      } finally {
-        setIsTryOnLoading(false);
+        return data;
+      } catch (error) {
+        throw error;
       }
-    }); // Zamknięcie enqueueTryOn
+    };
+
+    try {
+      const data = await fetchTryOnWithRetry(1);
+
+      // ZADANIE 2: Wymuszenie stringa przez interpolację
+      const cleanStringUrl = `${data.imageUrl}`;
+      console.log("Czysty URL do wyrenderowania:", cleanStringUrl);
+      setTryOnImage(cleanStringUrl);
+    } catch (err: any) {
+      console.error("Try-On Error:", err);
+      setError(err.message || "Nie udało się wygenerować przymiarki");
+    } finally {
+      setIsTryOnLoading(false);
+    }
   };
 
   return (
@@ -236,7 +240,7 @@ export default function TryOnWidget() {
                       <div className="h-full bg-gradient-to-r from-violet-600 via-fuchsia-500 to-violet-600 animate-shimmer w-[200%] shadow-[0_0_15px_rgba(139,92,246,0.6)]"></div>
                     </div>
                     <p className="text-center text-violet-300 text-sm animate-pulse font-medium flex items-center justify-center gap-2">
-                      <Sparkles size={14} className="text-fuchsia-400" /> Analizuję geometrię i dopasowanie...
+                      <Sparkles size={14} className="text-fuchsia-400" /> Stylizuję Twój look... To zaawansowany proces AI (zajmie ok. 15 sekund).
                     </p>
                   </div>
                 ) : (
