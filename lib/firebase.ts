@@ -1,49 +1,43 @@
 import { initializeApp, getApps, getApp, FirebaseApp } from "firebase/app";
+import { getAnalytics, isSupported, Analytics } from "firebase/analytics";
+import { getAuth, Auth } from "firebase/auth";
 import { getFirestore, Firestore } from "firebase/firestore";
 import { getStorage, FirebaseStorage } from "firebase/storage";
-import { getAuth, Auth } from "firebase/auth";
 
+// Klucze wpisane na twardo w celu obejścia problemów z SSR / Vercel Build (Zgodnie z poleceniem Wizjonera)
 const firebaseConfig = {
-    apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-    authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
-    projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-    storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
-    messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-    appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
-    measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID,
+    apiKey: "AIzaSyD64hkVf0Zam8W3qbg_-k-nRUwlOcgqx20",
+    authDomain: "stylistka-2026-8082a.firebaseapp.com",
+    projectId: "stylistka-2026-8082a",
+    storageBucket: "stylistka-2026-8082a.firebasestorage.app",
+    messagingSenderId: "903036072588",
+    appId: "1:903036072588:web:6937f29d12fc6b7f1241a9",
+    measurementId: "G-WSB2PXS67V"
 };
 
-// Diagnostyka – logowanie do konsoli (bezpieczne, nie ujawnia pełnych kluczy)
-if (typeof window !== 'undefined') {
-    console.log('[Firebase] Config check:', {
-        apiKey: firebaseConfig.apiKey ? `${firebaseConfig.apiKey.substring(0, 10)}...` : 'BRAK!',
-        projectId: firebaseConfig.projectId || 'BRAK!',
-        authDomain: firebaseConfig.authDomain || 'BRAK!',
+// 1. Bezpieczna inicjalizacja (zapobiega błędom podczas Next.js build)
+let app: FirebaseApp | undefined = undefined;
+
+if (firebaseConfig.apiKey) {
+    app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
+} else {
+    console.warn("⚠️ Brak klucza Firebase. Pomijam inicjalizację.");
+}
+
+// 2. Eksport instancji usług
+// Zapewniamy fallback w przypadku kompletnej porażki, aby SSR nie wyrzucał TypeError
+const auth: Auth = app ? getAuth(app) : ({} as Auth);
+const db: Firestore = app ? getFirestore(app) : ({} as Firestore);
+const storage: FirebaseStorage = app ? getStorage(app) : ({} as FirebaseStorage);
+
+// 3. Bezpieczne ładowanie analityki (tylko w przeglądarce, omija błąd window is not defined)
+let analytics: Analytics | null = null;
+if (app && typeof window !== "undefined") {
+    isSupported().then((supported) => {
+        if (supported && app) {
+            analytics = getAnalytics(app);
+        }
     });
 }
 
-// Inicjalizacja z try-catch — błąd klucza NIE zabije całego buildu
-let app: FirebaseApp;
-let db: Firestore;
-let storage: FirebaseStorage;
-let auth: Auth;
-
-try {
-    app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
-    db = getFirestore(app);
-    storage = getStorage(app);
-    auth = getAuth(app);
-} catch (err: any) {
-    console.error('[Firebase] KRYTYCZNY BŁĄD INICJALIZACJI:', err.message);
-    console.error('[Firebase] Sprawdź zmienne NEXT_PUBLIC_FIREBASE_* w .env.local i w panelu Vercel.');
-    console.error('[Firebase] Upewnij się, że klucze NIE mają cudzysłowów w panelu Vercel!');
-
-    // Fallback: tworzymy pustą aplikację żeby build nie padł
-    // Funkcje Firebase nie zadziałają, ale aplikacja się załaduje i pokaże błąd użytkownikowi
-    app = !getApps().length ? initializeApp({ apiKey: 'invalid', projectId: 'invalid' }) : getApp();
-    db = getFirestore(app);
-    storage = getStorage(app);
-    auth = getAuth(app);
-}
-
-export { app, db, storage, auth };
+export { app, auth, db, storage, analytics };
