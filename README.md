@@ -170,6 +170,8 @@ Przed pierwszą aktualizacją produkcyjną lub w przypadku zmiany kluczy, należ
   - **Hotfix UI Auth:** Usunięto pełnoekranowy bloker logowania. Google Auth migruje teraz do panelu Skanera jako „Tarcza Prywatności" z dużym przyciskiem `Zaloguj z Google`, widocznym obok opcji wgrywania zdjęcia. Karuzela produktów wyświetla dla niezalogowanych przycisk `Zaloguj się z AI` zamiast `Przymierz`.
   - **React Side-Effect Fix:** Przeniesiono wywołanie `fetch('/api/user-profile')` z ciała komponentu do hooka `useEffect`, eliminując nieskończone pętle bombardujące serwer przy każdym re-renderze.
 
+  - **Globalny AuthHeader:** Stworzono nowy komponent `AuthHeader.tsx` montowany jako sticky banner na samej górze każdej strony (`page.tsx`). Zawiera logo, przycisk **„Zaloguj przez Google"** dla niezalogowanych oraz badge z avatarem i przyciskiem wylogowania dla zalogowanych użytkowników.
+
 ---
 *Dokumentacja aktualizowana przy każdej ważnej zmianie, pod nadzorem Mentora, zgodnie z wizją Wizjonera i wdrożona przez Antigravity.*
 #   s t y l i s t k a - 2 0 2 6  .
