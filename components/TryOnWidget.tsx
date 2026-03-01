@@ -222,14 +222,14 @@ export default function TryOnWidget() {
 
         const data = await response.json();
 
-        // ZADANIE 2: Smart Retry na Froncie
-        if (response.status === 429 || data.error === "RATE_LIMIT") {
+        // ZADANIE 2: Smart Retry na Froncie - Maksymalnie 5 prób by zapobiec pętli
+        if (response.status === 429 || data.error === "RATE_LIMIT" || response.status === 409) {
           if (retries > 0) {
-            console.log("Limit Replicate (429). Czekam 12 sekund...");
-            await new Promise(r => setTimeout(r, 12000)); // Czekamy NA FRONCIE, nie na serwerze!
-            return fetchTryOnWithRetry(retries - 1); // Automatyczny retry
+            console.log(`Limit na serwerze API. Pozostało prób: ${retries - 1}. Czekam 12 sekund...`);
+            await new Promise(r => setTimeout(r, 12000));
+            return await fetchTryOnWithRetry(retries - 1);
           } else {
-            throw new Error("Wirtualna stylistka jest przeciążona. Spróbuj ponownie za chwilę.");
+            throw new Error("Wirtualna stylistka jest w tej chwili mocno przeciążona przez inne przymiarki. Spróbuj ponownie za kilka minut.");
           }
         }
 
@@ -310,19 +310,67 @@ export default function TryOnWidget() {
       fallbackMsgDraft = `Dopasowaliśmy rozmiar ${predictedSize}.`;
     }
 
-    // Cichy zapis profilowy do bazy Firebase (Fire & Forget)
-    if (predictedSize && user?.uid && !isAnalyzing) {
-      fetch('/api/user-profile', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user.uid, zalandoSize: predictedSize, chestCm: chestCm })
-      }).catch(() => { });
-    }
-
     return { sizeEu: predictedSize, sizeAlternative1: alt1, sizeAlternative2: alt2, fallbackMsg: fallbackMsgDraft };
   };
 
   const { sizeEu: mappedSize, sizeAlternative1: sizeAlt1, sizeAlternative2: sizeAlt2, fallbackMsg: mappedFallback } = getMappedSizeAndFallback();
+
+  // FIX: Fetch musi być uwięziony w Hooku, żeby zapobiec nieskończonej pętli zjawiska Side-Effect podczas Renderu React!
+  useEffect(() => {
+    if (mappedSize && user?.uid && !isAnalyzing) {
+      const parsedChestCm = parseInt(chestCircumference, 10);
+      fetch('/api/user-profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.uid, zalandoSize: mappedSize, chestCm: isNaN(parsedChestCm) ? null : parsedChestCm })
+      }).catch(() => { });
+    }
+  }, [mappedSize, user?.uid, isAnalyzing, chestCircumference]);
+
+  if (isAuthLoading) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4">
+        <Loader2 className="animate-spin text-indigo-500 mb-4" size={48} />
+        <p className="text-slate-400 font-medium tracking-wide">Inicjalizacja bezpiecznego wariantu VTON...</p>
+      </div>
+    );
+  }
+
+  // ZADANIE 2: UI Logowania (Google Auth)
+  // Przymierzalnia CAŁKOWICIE ukryta przed nieautoryzowanymi dłoniami
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4 text-center">
+        <div className="bg-slate-900 border border-indigo-500/20 rounded-3xl p-10 max-w-lg w-full shadow-[0_0_50px_rgba(99,102,241,0.1)] relative overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/5 to-transparent pointer-events-none" />
+          <div className="relative z-10 animate-fade-in-up">
+            <div className="w-24 h-24 bg-indigo-500/10 rounded-full flex items-center justify-center mx-auto mb-8 shadow-[0_0_30px_rgba(99,102,241,0.2)]">
+              <ShieldCheck size={48} className="text-indigo-400" />
+            </div>
+            <h2 className="text-3xl font-bold text-white mb-4">Wirtualna Stylistka</h2>
+            <p className="text-slate-400 mb-8 max-w-sm mx-auto text-sm leading-relaxed">
+              Aby korzystać z VTON i chronić prywatność w postaci algorytmu auto-destrukcji zdjęć bazy w chmurze Storage Firebase, wymagamy zweryfikowanej tożsamości.
+            </p>
+
+            <button
+              onClick={handleGoogleLogin}
+              className="bg-white hover:bg-slate-100 text-slate-900 font-bold py-4 px-8 rounded-xl flex items-center justify-center w-full gap-3 transition-all hover:scale-[1.02] active:scale-95 shadow-xl group border-2 border-transparent hover:border-slate-300"
+            >
+              <LogIn size={22} className="group-hover:translate-x-1 transition-transform" />
+              Zaloguj się z Google
+            </button>
+
+            {error && (
+              <div className="mt-6 p-4 bg-red-500/10 border border-red-500/20 rounded-xl flex items-center gap-3 text-red-200 text-left">
+                <AlertTriangle className="shrink-0 text-red-400" size={18} />
+                <p className="text-sm">{error}</p>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
@@ -337,52 +385,26 @@ export default function TryOnWidget() {
               <ScanLine className="text-indigo-400 animate-pulse" /> Skaner Sylwetki AI
             </h2>
 
-            <div className={`relative rounded-2xl overflow-hidden border-2 border-dashed transition-colors min-h-[400px] flex items-center justify-center
-              ${!user ? 'border-slate-800 bg-slate-900/30' : 'border-slate-700/50 hover:border-indigo-500/50 bg-slate-900/50'}`}>
-
+            <div className="relative rounded-2xl overflow-hidden border-2 border-dashed border-slate-700/50 hover:border-indigo-500/50 transition-colors bg-slate-900/50 min-h-[400px] flex items-center justify-center">
               {/* Animacja skanowania */}
-              {isAnalyzing && user && (
+              {isAnalyzing && (
                 <div className="absolute inset-0 z-20 pointer-events-none">
                   <div className="w-full h-1 bg-indigo-500 shadow-[0_0_15px_2px_rgba(99,102,241,0.8)] animate-scan" />
                 </div>
               )}
 
-              {/* Tarcza Prywatności / Wgrywanie zdjęcia */}
-              {!user ? (
-                <div className="flex flex-col items-center justify-center p-8 text-center animate-fade-in-up">
-                  <div className="w-20 h-20 bg-indigo-500/10 rounded-full flex items-center justify-center mb-6 shadow-[0_0_30px_rgba(99,102,241,0.2)]">
-                    <ShieldCheck size={40} className="text-indigo-400" />
-                  </div>
-                  <h3 className="text-xl font-bold text-white mb-2">Prywatność przede wszystkim</h3>
-                  <p className="text-slate-400 max-w-sm mb-8 text-sm leading-relaxed">
-                    Aby zadbać o Twoje bezpieczeństwo, autoryzuj sesję. Twoje zdjęcia "w majtkach" trafią do zaszyfrowanej chmury, a po przymiarce ulegną auto-destrukcji.
-                  </p>
+              {/* Pasek profilu po zalogowaniu */}
+              <div className="absolute top-4 right-4 z-30 bg-black/40 backdrop-blur border border-white/10 px-4 py-2 rounded-full flex items-center gap-3 shadow-xl">
+                <img src={user.photoURL || ''} alt="User" className="w-6 h-6 rounded-full border border-indigo-500/30" />
+                <span className="text-xs text-slate-300 font-medium truncate max-w-[100px]">{user.displayName}</span>
+                <button onClick={() => signOut(auth)} className="ml-2 text-rose-400 hover:text-rose-300 text-xs font-bold uppercase tracking-wider transition-colors">Wyloguj</button>
+              </div>
 
-                  <button
-                    onClick={handleGoogleLogin}
-                    disabled={isAuthLoading}
-                    className="bg-white hover:bg-slate-100 text-slate-900 font-bold py-3 px-8 rounded-xl flex items-center gap-3 transition-all hover:scale-105 active:scale-95 shadow-xl"
-                  >
-                    {isAuthLoading ? <Loader2 className="animate-spin" size={20} /> : <LogIn size={20} />}
-                    Zaloguj z Google
-                  </button>
-                </div>
-              ) : (
-                <>
-                  {/* Pasek profilu po zalogowaniu */}
-                  <div className="absolute top-4 right-4 z-30 bg-black/40 backdrop-blur border border-white/10 px-4 py-2 rounded-full flex items-center gap-3">
-                    <img src={user.photoURL || ''} alt="User" className="w-6 h-6 rounded-full" />
-                    <span className="text-xs text-slate-300 font-medium truncate max-w-[100px]">{user.displayName}</span>
-                    <button onClick={() => signOut(auth)} className="ml-2 text-rose-400 hover:text-rose-300 text-xs font-bold uppercase tracking-wider">Wyloguj</button>
-                  </div>
-
-                  <ImageUploader
-                    label="Wgraj zdjęcie sylwetki"
-                    image={personBase64}
-                    onUpload={handleUserUpload}
-                  />
-                </>
-              )}
+              <ImageUploader
+                label="Wgraj zdjęcie sylwetki"
+                image={personBase64}
+                onUpload={handleUserUpload}
+              />
             </div>
 
             {/* Nowy układ VTON - Wynik pod skanerem */}
