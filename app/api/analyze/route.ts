@@ -55,7 +55,13 @@ export async function POST(req: Request) {
           "figureType": "JABŁKO | GRUSZKA | KLEPSYDRA | KOLUMNA | ROŻEK",
           "strength": "realny atut widoczny na zdjęciu",
           "advice": "konkretna porada fasonowa dla tego typu sylwetki",
-          "avoid": "czego unikać (nie powielaj oczywistości)"
+          "avoid": "czego unikać (nie powielaj oczywistości)",
+          "garmentDetails": {
+             "color": "kolor po polsku (np. 'czerwona')",
+             "garmentType": "typ ubrania po polsku (np. 'sukienka')",
+             "cut": "krój ubrania (np. 'mini', 'maxi', 'oversize') - wypełnij jeśli to możliwe, w przeciwnym razie pusty ciąg",
+             "occasion": "okazja podana z promptu lub dopasowana z kontekstu (np. 'randka')"
+          }
         }`
       },
     ];

@@ -21,6 +21,7 @@ export default function ShoppingCarousel({
   searchQuery,
   uiTitle,
   stylistComment,
+  garmentDetails,
   onSelectProduct,
   forbiddenKeywords = [],
   size,
@@ -29,6 +30,12 @@ export default function ShoppingCarousel({
   searchQuery: string,
   uiTitle?: string,
   stylistComment?: string,
+  garmentDetails?: {
+    color?: string;
+    garmentType?: string;
+    cut?: string;
+    occasion?: string;
+  },
   onSelectProduct: (url: string, title?: string) => void,
   forbiddenKeywords?: string[],
   size?: string,
@@ -46,7 +53,16 @@ export default function ShoppingCarousel({
       setLoading(true);
       setIsAlternative(false);
       try {
-        const url = `/api/products?q=${encodeURIComponent(searchQuery)}${size ? `&size=${encodeURIComponent(size)}` : ''}`;
+        let url = `/api/products?q=${encodeURIComponent(searchQuery)}${size ? `&size=${encodeURIComponent(size)}` : ''}`;
+
+        // Dopnij parametry GarmentDetails jeśli są dostępne
+        if (garmentDetails) {
+          if (garmentDetails.color) url += `&color=${encodeURIComponent(garmentDetails.color)}`;
+          if (garmentDetails.garmentType) url += `&type=${encodeURIComponent(garmentDetails.garmentType)}`;
+          if (garmentDetails.cut) url += `&cut=${encodeURIComponent(garmentDetails.cut)}`;
+          if (garmentDetails.occasion) url += `&occasion=${encodeURIComponent(garmentDetails.occasion)}`;
+        }
+
         const response = await fetch(url);
         const data = await response.json();
 

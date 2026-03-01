@@ -5,6 +5,11 @@ export async function GET(req: Request) {
   const q = searchParams.get('q');
   const size = searchParams.get('size');
 
+  const color = searchParams.get('color');
+  const type = searchParams.get('type');
+  const cut = searchParams.get('cut');
+  const occasion = searchParams.get('occasion');
+
   let query = q || '';
 
   // DYNAMICZNE DODANIE ROZMIARU DO ZAPYTANIA (Twardy Filtr)
@@ -32,9 +37,19 @@ export async function GET(req: Request) {
 
     const callSerper = async (searchQuery: string, useModifiers: boolean = true) => {
       // Wstrzyknięcie Whitelisty i wykluczeń (Retail-Only Filter dla VTON)
-      const finalQuery = useModifiers
-        ? `"${searchQuery}" (site:zalando.pl OR site:answear.com OR site:modivo.pl OR site:hm.com) -portfolio -fotograf -sesja -fotografia -usługi`
-        : searchQuery;
+      let finalQuery = searchQuery;
+
+      if (useModifiers) {
+        if (color && type) {
+          // Parametryczne zapytanie z Gemini (Silnik Zapytań)
+          const cutPart = cut ? ` +${cut}` : '';
+          const baseQuery = `+${color} +${type}${cutPart}`;
+          finalQuery = `${baseQuery} site:zalando.pl OR site:modivo.pl OR site:answear.com OR site:hm.com -portfolio -fotograf -usługi -sesja -buty -torebka -szpilki`;
+        } else {
+          // Standardowy Fallback dla starszych wyszukiwań bez meta-danych ubrań
+          finalQuery = `"${searchQuery}" (site:zalando.pl OR site:answear.com OR site:modivo.pl OR site:hm.com) -portfolio -fotograf -sesja -fotografia -usługi`;
+        }
+      }
 
       console.log('-> Serper Request Q:', finalQuery);
 
@@ -101,7 +116,14 @@ export async function GET(req: Request) {
     }) || [];
 
     console.log(`✅ FINISZER (SERPER): Znaleziono ${products.length} produktów. Alternatywne: ${isAlternative}`);
-    return NextResponse.json({ products, isAlternative });
+
+    // Generowanie ostatecznego JSON-a wraz z meta-danymi na cele parametryczne
+    return NextResponse.json({
+      products,
+      isAlternative,
+      generatedQuery: (color && type && !isAlternative) ? `+${color} +${type} ${cut ? `+${cut}` : ''} site:...` : query,
+      garmentMetadata: { color, type, cut, occasion }
+    });
 
   } catch (error: any) {
     console.error("🔥 SERPER KRYTYCZNY BŁĄD:", error.message);

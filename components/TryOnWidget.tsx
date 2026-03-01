@@ -55,6 +55,12 @@ export default function TryOnWidget() {
     uiTitle?: string;
     apiQuery?: string;
     stylistComment?: string;
+    garmentDetails?: {
+      color?: string;
+      garmentType?: string;
+      cut?: string;
+      occasion?: string;
+    };
   } | null>(null);
   const [tryOnImage, setTryOnImage] = useState<string | null>(null);
 
@@ -121,7 +127,8 @@ export default function TryOnWidget() {
         avoid: data.avoid || "Unikaj zaburzeń proporcji.",
         uiTitle: data.uiTitle || "Wybrane dla Ciebie",
         apiQuery: data.apiQuery || itemQuery || "odzież",
-        stylistComment: data.stylistComment
+        stylistComment: data.stylistComment,
+        garmentDetails: data.garmentDetails
       });
     } catch (err: any) {
       console.error("Analysis Error:", err);
@@ -496,6 +503,7 @@ export default function TryOnWidget() {
                     searchQuery={analysisResult?.apiQuery || itemQuery || "Elegancka odzież"}
                     uiTitle={analysisResult?.uiTitle}
                     stylistComment={analysisResult?.stylistComment}
+                    garmentDetails={analysisResult?.garmentDetails}
                     onSelectProduct={(url, title) => handleTryOn(url, title)}
                     forbiddenKeywords={currentCategory === 'SHOES' ? [] : currentCategory === 'ACCESSORIES' ? [] : ['torebka', 'kolczyki', 'szpilki', 'buty']} // Usunięto 'sukienka' itp., VTON poradzi sobie z wszystkim, o ile dostanie model górny/dolny/sukienkę
                     size={isSizeRequired ? sizeQuery : undefined}
