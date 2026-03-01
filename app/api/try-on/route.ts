@@ -133,11 +133,26 @@ export async function POST(req: Request) {
     // === KROK 5: WYWOŁANIE IDM-VTON ===
     // Używamy WYŁĄCZNIE oficjalnych pól schematu IDM-VTON
     const safeCategory = resolveCategory(category, productTitle);
-    const garment_des = bodyTypeModifier
-      ? `${productTitle || 'garment'}. ${bodyTypeModifier}`
-      : (productTitle || 'photorealistic clothing, preserve original style');
 
-    console.log(`[TRY-ON] Krok 5: Wywołanie IDM-VTON – kategoria: ${safeCategory}`);
+    // ZADANIE 2: Automatyczne flagi dla Sukienek (isDress)
+    const isDress = safeCategory === 'dresses' || (productTitle || '').toLowerCase().includes('sukni');
+
+    // ZADANIE 1 i 3: Dynamiczny garment_des z twardym modyfikatorem blokującym szelki/skracanie
+    let baseGarmentDes = productTitle || 'photorealistic clothing';
+
+    if (isDress) {
+      baseGarmentDes += ", long dress, full body dress, covering legs, highly detailed";
+    }
+
+    const garment_des = bodyTypeModifier
+      ? `${baseGarmentDes}. ${bodyTypeModifier}`
+      : baseGarmentDes;
+
+    // Kategoria ostateczna — narzucona dla sukienek
+    const finalCategory = isDress ? 'dresses' : safeCategory;
+
+    console.log(`[TRY-ON] Krok 5: Wywołanie IDM-VTON – kategoria: ${finalCategory}`);
+    console.log(`[TRY-ON] isDress: ${isDress}`);
     console.log(`[TRY-ON] human_img: ${human_img}`);
     console.log(`[TRY-ON] garm_img: ${garm_img}`);
     console.log(`[TRY-ON] garment_des: ${garment_des}`);
@@ -146,9 +161,9 @@ export async function POST(req: Request) {
       input: {
         human_img,                         // POLE 1: Zdjęcie użytkownika (bezpieczny link Firebase)
         garm_img,                          // POLE 2: Zdjęcie odzieży (proxied przez Firebase)
-        garment_des,                       // POLE 3: Opis odzieży dla modelu
-        category: safeCategory,           // POLE 4: upper_body | lower_body | dresses
-        force_dc: safeCategory === 'dresses',
+        garment_des,                       // POLE 3: Opis odzieży dla modelu (z blokadą nóg/szelek)
+        category: finalCategory,           // POLE 4: upper_body | lower_body | dresses
+        force_dc: isDress,                 // POLE 5: Zgodnie ze specyfikacją Replicate (DressCode dla sukienek)
         num_inference_steps: 30,
         guidance_scale: 2.5,
         seed: 42,
@@ -167,7 +182,7 @@ export async function POST(req: Request) {
         uid,
         garm_img: clothingImage, // Oryginał dla referencji
         productTitle: productTitle || '',
-        category: safeCategory,
+        category: finalCategory,
         timestamp: Date.now()
       });
       console.log(`[TRY-ON] Wynik zapisany w try_on_results/${cacheHash}`);

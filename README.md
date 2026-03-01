@@ -182,6 +182,7 @@ Przed pierwszą aktualizacją produkcyjną lub w przypadku zmiany kluczy, należ
 
   - **Globalny AuthHeader:** Stworzono komponent `AuthHeader.tsx` (sticky top bar z logo, avatar i wylogowaniem).
   - **AuthGatekeeper (Pełna blokada):** Nowy komponent `AuthGatekeeper.tsx` opakowuje **całą aplikację** w `page.tsx`. Dopóki `onAuthStateChanged` nie zwróci zalogowanego użytkownika, żaden komponent dziecka (TryOnWidget, karuzela, LocationHeader) **nie istnieje w DOM** — zero requestów API, zero renderów, zero 429. Użytkownik widzi wyłącznie ekran z przyciskiem **„Zaloguj się z Google"**.
+  - **IDM-VTON Smart Parser:** API dynamicznie rozpoznaje sukienki (`isDress`) na podstawie tytułu odzieży ze sklepu. Dla sukienek automatycznie rzutuje kategorię `dresses`, odpala flagę `force_dc: true` (wymóg schematu Replicate) i dołącza do `garment_des` twardy prompt blokujący halucynacje krótko uciętych nóg i szelek ze zdjęcia bazowego (`"long dress, full body dress, covering legs, highly detailed"`).
 
 ---
 *Dokumentacja aktualizowana przy każdej ważnej zmianie, pod nadzorem Mentora, zgodnie z wizją Wizjonera i wdrożona przez Antigravity.*
