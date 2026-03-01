@@ -29,20 +29,12 @@ export async function POST(req: Request) {
       }
     });
 
-    // FIX DLA [object Object]: Wyciągamy czysty url
-    let resultUrl = Array.isArray(output) ? output[0] : output;
+    // ZADANIE 2: Brutalna eliminacja błędu [object Object] / URL()
+    const finalImageUrl = Array.isArray(output) ? String(output[0]) : String(output);
 
-    // Jeśli z jakiegoś powodu to nadal obiekt (np. z polem url/uri)
-    if (typeof resultUrl === 'object' && resultUrl !== null) {
-      resultUrl = resultUrl.url || resultUrl.uri || Object.values(resultUrl)[0] || String(resultUrl);
-    }
+    console.log('SUKCES: Wygenerowano obraz pomyślnie.');
 
-    // Gwarancja czystego stringa
-    const finalUrl = typeof resultUrl === 'string' ? resultUrl : String(resultUrl);
-
-    console.log('SUKCES: Wygenerowano obraz pomyślnie. [URL UKRYTY]');
-
-    return NextResponse.json({ result: finalUrl });
+    return NextResponse.json({ imageUrl: finalImageUrl });
   } catch (error: any) {
     console.error("BŁĄD REPLICATE:", error.message);
     return NextResponse.json({ error: error.message }, { status: 500 });

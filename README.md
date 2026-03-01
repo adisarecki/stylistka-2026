@@ -132,6 +132,8 @@ Przed pierwszą aktualizacją produkcyjną lub w przypadku zmiany kluczy, należ
 
 ## Historia Rozwoju (Changelog)
 
+- **Agresywne Wymuszenie Tekstu VTON (Fix Minifikacji)**: Bezwzględne rzutowanie adresu URL na String (`String(output)`) na backendzie oraz ponowne zabezpieczenie interpolacją (`${data.imageUrl}`) na frontendzie, co ostatecznie rozwiązuje problem z renderowaniem funkcji `new URL(e)` przez minifikator Vercel. Dodano bezpieczne sprawdzanie przed użyciem znacznika `<img>`.
+- **Uproszczenie danych VTON (Fix renderowania URL)**: Wyeliminowano problem z minifikacją Vercel poprzez przejście na czyste ciągi znaków (String) zamiast obiektów `URL` po stronie klienta. Backend zwraca teraz `{ imageUrl: string }`, a frontend renderuje obraz bez zbędnego przetwarzania.
 - **Hotfix (VTON UI & Rendering)**: Naprawiono błąd z ucinaniem/renderowaniem obrazów typu `[object Object]` z serwerów Replicate. Przebudowano układ UI – od teraz "Prawdopodobny wygląd" (wygenerowana przymiarka) ląduje z eleganckimi animacjami wprost pod skanerem sylwetki (na lewym panelu).
 
 - **Tip Top (Faza 1.5 i Faza 2.0)**: 
