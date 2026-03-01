@@ -1,5 +1,6 @@
 import Replicate from "replicate";
 import { NextResponse } from "next/server";
+import crypto from "crypto";
 import { db, storage } from "@/lib/firebase";
 import { doc, getDoc, setDoc, deleteDoc } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
@@ -25,6 +26,23 @@ export async function POST(req: Request) {
     console.log('--- START PRZYMIERZALNI ---');
     console.log('Kategoria:', category);
     console.log('Produkt:', productTitle);
+
+    // KROK -2: VTON CACHE (PAMIĘĆ WYNIKÓW)
+    console.log('--- PIPELINE: FIRESTORE CACHE ---');
+    // Generowanie stabilnego Hasha MD5 z parametrów wejściowych (bez przymiotników modyfikujących body)
+    const hashString = `${personImage.substring(0, 100)}_${clothingImage}_${category}_${productTitle}`;
+    const cacheHash = crypto.createHash('md5').update(hashString).digest('hex');
+    const cacheRef = doc(db, 'vton_cache', cacheHash);
+
+    try {
+      const cacheDoc = await getDoc(cacheRef);
+      if (cacheDoc.exists()) {
+        console.log(`ZNALEZIONO W CACHE! Ominięcie Replicate (Hash: ${cacheHash})`);
+        return NextResponse.json({ imageUrl: cacheDoc.data()?.imageUrl, cached: true });
+      }
+    } catch (cacheErr: any) {
+      console.warn("CACHE READ WARNING:", cacheErr.message);
+    }
 
     // KROK -1: FIRESTORE GLOBAL MUTEX (Zabezpieczenie przed błędem 429)
     console.log('--- PIPELINE: FIRESTORE MUTEX ---');
@@ -147,6 +165,19 @@ export async function POST(req: Request) {
     const finalImageUrl = Array.isArray(output) ? String(output[0]) : String(output);
 
     console.log('SUKCES: Wygenerowano obraz pomyślnie.');
+
+    // KROK 4.5: ZAPIS WYNIKU DO VTON CACHE (PAMIĘĆ)
+    try {
+      await setDoc(cacheRef, {
+        imageUrl: finalImageUrl,
+        timestamp: Date.now(),
+        category: category,
+        productTitle: productTitle
+      });
+      console.log(`SUKCES CACHE: Zapisano wektor wyjściowy pod md5: ${cacheHash}`);
+    } catch (cacheWriteErr: any) {
+      console.warn("CACHE WRITE WARNING:", cacheWriteErr.message);
+    }
 
     // KROK 5: CLEANUP Mutexa - zwolnienie zasobu na sukces
     await deleteDoc(doc(db, 'active_sessions', 'singleton-vton-session'));
