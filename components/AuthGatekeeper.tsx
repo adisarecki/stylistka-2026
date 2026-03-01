@@ -3,7 +3,7 @@
 import { useState, useEffect, ReactNode } from 'react';
 import { auth } from '@/lib/firebase';
 import { signInWithPopup, GoogleAuthProvider, onAuthStateChanged, User } from 'firebase/auth';
-import { LogIn, Loader2, ShieldCheck, Sparkles } from 'lucide-react';
+import { LogIn, Loader2, ShieldCheck, Sparkles, AlertTriangle } from 'lucide-react';
 
 interface AuthGatekeeperProps {
     children: ReactNode;
@@ -21,28 +21,48 @@ export default function AuthGatekeeper({ children }: AuthGatekeeperProps) {
     const [isLoading, setIsLoading] = useState(true);
     const [isSigningIn, setIsSigningIn] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [firebaseReady, setFirebaseReady] = useState(false);
 
     useEffect(() => {
-        const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-            setUser(currentUser);
+        console.log('[AuthGatekeeper] Montowanie komponentu...');
+        console.log('[AuthGatekeeper] Firebase auth object:', auth ? 'EXISTS' : 'NULL');
+
+        try {
+            const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+                console.log('[AuthGatekeeper] onAuthStateChanged:', currentUser ? currentUser.email : 'BRAK USERA');
+                setUser(currentUser);
+                setIsLoading(false);
+                setIsSigningIn(false);
+                setFirebaseReady(true);
+            });
+            return () => unsubscribe();
+        } catch (err: any) {
+            console.error('[AuthGatekeeper] Firebase init error:', err);
             setIsLoading(false);
-            setIsSigningIn(false);
-        });
-        return () => unsubscribe();
+            setFirebaseReady(false);
+            setError('Błąd inicjalizacji Firebase: ' + err.message);
+        }
     }, []);
 
     const handleGoogleLogin = async () => {
+        console.log('[AuthGatekeeper] Kliknięto przycisk logowania Google');
         setIsSigningIn(true);
         setError(null);
         try {
             const provider = new GoogleAuthProvider();
-            await signInWithPopup(auth, provider);
+            console.log('[AuthGatekeeper] Wywołuję signInWithPopup...');
+            const result = await signInWithPopup(auth, provider);
+            console.log('[AuthGatekeeper] Zalogowano pomyślnie:', result.user.email);
         } catch (err: any) {
-            console.error('Login error:', err);
+            console.error('[AuthGatekeeper] Login error:', err.code, err.message);
             if (err.code === 'auth/popup-closed-by-user') {
                 setError('Zamknięto okno logowania. Spróbuj ponownie.');
+            } else if (err.code === 'auth/unauthorized-domain') {
+                setError('Domena nie jest autoryzowana w Firebase Console. Dodaj ją do Authorized Domains w Authentication → Settings.');
+            } else if (err.code === 'auth/popup-blocked') {
+                setError('Przeglądarka zablokowała okno popup. Odblokuj popupy dla tej strony.');
             } else {
-                setError('Nie udało się zalogować. Spróbuj ponownie.');
+                setError(`Błąd logowania (${err.code || 'unknown'}): ${err.message}`);
             }
             setIsSigningIn(false);
         }
@@ -58,7 +78,7 @@ export default function AuthGatekeeper({ children }: AuthGatekeeperProps) {
         );
     }
 
-    // GATEKEEPER: Brak zalogowanego użytkownika → BLOKADA CAŁEJ APLIKACJI
+    // GATEKEEPER: Brak zalogowanego użytkownika → ekran logowania z AKTYWNYM przyciskiem Google
     if (!user) {
         return (
             <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6">
@@ -82,15 +102,15 @@ export default function AuthGatekeeper({ children }: AuthGatekeeperProps) {
 
                         {/* Opis */}
                         <p className="text-slate-400 text-sm leading-relaxed mb-8 max-w-sm mx-auto">
-                            Wirtualna przymierzalnia AI z ochroną prywatności.
-                            Zaloguj się, by uzyskać dostęp do skanera sylwetki i inteligentnej przymiarki.
+                            Wirtualna przymierzalnia AI ze skanowaniem sylwetki i automatyczną ochroną prywatności.
+                            Zaloguj się, aby wejść do Przymierzalni AI.
                         </p>
 
-                        {/* GŁÓWNY PRZYCISK LOGOWANIA */}
+                        {/* ========== GŁÓWNY PRZYCISK LOGOWANIA ========== */}
                         <button
                             onClick={handleGoogleLogin}
                             disabled={isSigningIn}
-                            className="w-full flex items-center justify-center gap-3 bg-white hover:bg-slate-100 text-slate-900 font-bold py-4 px-8 rounded-xl transition-all hover:scale-[1.02] active:scale-95 shadow-xl shadow-white/5 disabled:opacity-60 disabled:cursor-wait text-lg"
+                            className="w-full flex items-center justify-center gap-3 bg-white hover:bg-slate-100 text-slate-900 font-bold py-4 px-8 rounded-xl transition-all hover:scale-[1.02] active:scale-95 shadow-xl shadow-white/5 disabled:opacity-60 disabled:cursor-wait text-lg border-2 border-transparent hover:border-indigo-300"
                         >
                             {isSigningIn ? (
                                 <>
@@ -105,15 +125,23 @@ export default function AuthGatekeeper({ children }: AuthGatekeeperProps) {
                             )}
                         </button>
 
-                        {/* Błąd */}
+                        {/* Błąd - wyraźny, z ikoną */}
                         {error && (
-                            <p className="mt-4 text-red-400 text-sm bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-2">
-                                {error}
-                            </p>
+                            <div className="mt-4 flex items-start gap-2 text-left bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3">
+                                <AlertTriangle className="shrink-0 text-red-400 mt-0.5" size={16} />
+                                <p className="text-red-300 text-sm">{error}</p>
+                            </div>
                         )}
 
-                        {/* Podpis */}
-                        <p className="mt-8 text-slate-600 text-xs">
+                        {/* Status Firebase */}
+                        <div className="mt-8 flex items-center justify-center gap-2 text-xs">
+                            <div className={`w-2 h-2 rounded-full ${firebaseReady ? 'bg-emerald-400' : 'bg-red-400'}`} />
+                            <span className="text-slate-600">
+                                Firebase: {firebaseReady ? 'Połączony' : 'Rozłączony'}
+                            </span>
+                        </div>
+
+                        <p className="mt-2 text-slate-600 text-xs">
                             Twoje zdjęcia są automatycznie usuwane po przymiarce (RODO).
                         </p>
                     </div>
@@ -122,6 +150,7 @@ export default function AuthGatekeeper({ children }: AuthGatekeeperProps) {
         );
     }
 
-    // ZALOGOWANY → Renderuj całą aplikację
+    // ZALOGOWANY → Dopiero teraz montuj całą aplikację
+    console.log('[AuthGatekeeper] Użytkownik zalogowany, montowanie aplikacji...');
     return <>{children}</>;
 }
