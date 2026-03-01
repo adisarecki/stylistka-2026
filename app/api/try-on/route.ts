@@ -119,19 +119,28 @@ export async function POST(req: Request) {
     // ZADANIE 3: Wstrzyknięcie w /api/try-on
     // Kiedy użytkownik kliknie "Przymierz", frontend przekazuje te dwa pola do /api/try-on.
     // W payloadzie dla Replicate po prostu przemapuj:
-    const finalCategory = category || 'upper_body'; // "category" na froncie równe jest replicateCategory
-    const isDress = finalCategory === 'dresses';
+    let finalCategory = category || 'upper_body';
+    let finalForceDc = finalCategory === 'dresses';
+    let finalGarmentDes = replicatePrompt || productTitle || 'photorealistic clothing, highly detailed';
 
-    // ZADANIE 1 & 3: garment_des to teraz wyłącznie replicatePrompt, wygenerowany przez Gemini jako twarde angielskie tagi.
-    // Żadnych porad po polsku.
-    const finalGarmentDes = replicatePrompt || productTitle || 'photorealistic clothing, highly detailed';
+    // BRUTALNY FALLBACK - ZABEZPIECZENIE: Jeśli w nazwie/opisie jest sukienka, wymuś parametry!
+    const lowerDesc = finalGarmentDes.toLowerCase() + " " + (productTitle || '').toLowerCase();
+    if (lowerDesc.includes('sukienk') || lowerDesc.includes('suknia') || lowerDesc.includes('maxi') || lowerDesc.includes('balow')) {
+      finalCategory = "dresses";
+      finalForceDc = true;
+
+      // Jeśli opis jest po polsku, doklej na siłę angielskie wymuszenie!
+      if (!lowerDesc.includes('dress')) {
+        finalGarmentDes += ", long elegant dress, full length maxi dress, covering legs entirely down to the floor, highly detailed";
+      }
+    }
 
     const replicatePayload = {
       human_img,                         // POLE 1: Zdjęcie użytkownika
       garm_img,                          // POLE 2: Zdjęcie odzieży
       garment_des: finalGarmentDes,      // POLE 3: Czysty angielski prompt (bez polskich rad dla sukni!)
       category: finalCategory,           // POLE 4: upper_body | lower_body | dresses
-      force_dc: isDress,                 // POLE 5: Wymuszony DressCode dla kategorii dresses
+      force_dc: finalForceDc,            // POLE 5: Wymuszony DressCode dla kategorii dresses
       num_inference_steps: 30,
       guidance_scale: 2.5,
       seed: 42,
