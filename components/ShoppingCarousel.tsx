@@ -28,7 +28,9 @@ export default function ShoppingCarousel({
   sizeAlternative1,
   sizeAlternative2,
   isTryOnLoading = false,
-  sizeIntelligentFallback
+  sizeIntelligentFallback,
+  isLoggedIn = false,
+  onLoginRequest
 }: {
   searchQuery: string,
   uiTitle?: string,
@@ -45,7 +47,9 @@ export default function ShoppingCarousel({
   sizeAlternative1?: string,
   sizeAlternative2?: string,
   isTryOnLoading?: boolean,
-  sizeIntelligentFallback?: string
+  sizeIntelligentFallback?: string,
+  isLoggedIn?: boolean,
+  onLoginRequest?: () => void
 }) {
   const { location } = useLocation();
   const [products, setProducts] = useState<Product[]>([]);
@@ -228,16 +232,26 @@ export default function ShoppingCarousel({
                     >
                       Sprawdź <ExternalLink size={12} />
                     </a>
-                    <button
-                      onClick={() => !isTryOnLoading && onSelectProduct(product.imageUrl, product.name)}
-                      disabled={isTryOnLoading}
-                      className={`flex-1 font-medium py-2 rounded-xl transition-all text-xs flex items-center justify-center gap-1 shadow-lg
-                        ${isTryOnLoading
-                          ? 'bg-slate-700 text-slate-400 cursor-not-allowed border border-slate-600'
-                          : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-500/20'}`}
-                    >
-                      {isTryOnLoading ? 'Zajęta...' : 'Przymierz'} <Shirt size={12} />
-                    </button>
+
+                    {!isLoggedIn ? (
+                      <button
+                        onClick={onLoginRequest}
+                        className="flex-1 font-medium py-2 rounded-xl transition-all text-[10px] leading-tight flex items-center justify-center gap-1 shadow-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 active:scale-95"
+                      >
+                        Zaloguj się z API
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => !isTryOnLoading && onSelectProduct(product.imageUrl, product.name)}
+                        disabled={isTryOnLoading}
+                        className={`flex-1 font-medium py-2 rounded-xl transition-all text-xs flex items-center justify-center gap-1 shadow-lg
+                          ${isTryOnLoading
+                            ? 'bg-slate-700 text-slate-400 cursor-not-allowed border border-slate-600'
+                            : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-500/20 active:scale-95'}`}
+                      >
+                        {isTryOnLoading ? 'Pracuję...' : 'Przymierz'} <Shirt size={12} />
+                      </button>
+                    )}
                   </div>
 
                   {product.isLocal && (

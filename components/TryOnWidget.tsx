@@ -336,41 +336,8 @@ export default function TryOnWidget() {
     );
   }
 
-  // ZADANIE 2: UI Logowania (Google Auth)
-  // Przymierzalnia CAŁKOWICIE ukryta przed nieautoryzowanymi dłoniami
-  if (!user) {
-    return (
-      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4 text-center">
-        <div className="bg-slate-900 border border-indigo-500/20 rounded-3xl p-10 max-w-lg w-full shadow-[0_0_50px_rgba(99,102,241,0.1)] relative overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/5 to-transparent pointer-events-none" />
-          <div className="relative z-10 animate-fade-in-up">
-            <div className="w-24 h-24 bg-indigo-500/10 rounded-full flex items-center justify-center mx-auto mb-8 shadow-[0_0_30px_rgba(99,102,241,0.2)]">
-              <ShieldCheck size={48} className="text-indigo-400" />
-            </div>
-            <h2 className="text-3xl font-bold text-white mb-4">Wirtualna Stylistka</h2>
-            <p className="text-slate-400 mb-8 max-w-sm mx-auto text-sm leading-relaxed">
-              Aby korzystać z VTON i chronić prywatność w postaci algorytmu auto-destrukcji zdjęć bazy w chmurze Storage Firebase, wymagamy zweryfikowanej tożsamości.
-            </p>
-
-            <button
-              onClick={handleGoogleLogin}
-              className="bg-white hover:bg-slate-100 text-slate-900 font-bold py-4 px-8 rounded-xl flex items-center justify-center w-full gap-3 transition-all hover:scale-[1.02] active:scale-95 shadow-xl group border-2 border-transparent hover:border-slate-300"
-            >
-              <LogIn size={22} className="group-hover:translate-x-1 transition-transform" />
-              Zaloguj się z Google
-            </button>
-
-            {error && (
-              <div className="mt-6 p-4 bg-red-500/10 border border-red-500/20 rounded-xl flex items-center gap-3 text-red-200 text-left">
-                <AlertTriangle className="shrink-0 text-red-400" size={18} />
-                <p className="text-sm">{error}</p>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  }
+  // Pełnoekranowa blokada została usunięta by użytkownik widział aplikację bez logowania
+  // Logowanie znajduje się teraz w lewym panelu skanera (Tarcza Prywatności) i blokuje klawisze przymiarki
 
   return (
     <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
@@ -394,17 +361,40 @@ export default function TryOnWidget() {
               )}
 
               {/* Pasek profilu po zalogowaniu */}
-              <div className="absolute top-4 right-4 z-30 bg-black/40 backdrop-blur border border-white/10 px-4 py-2 rounded-full flex items-center gap-3 shadow-xl">
-                <img src={user.photoURL || ''} alt="User" className="w-6 h-6 rounded-full border border-indigo-500/30" />
-                <span className="text-xs text-slate-300 font-medium truncate max-w-[100px]">{user.displayName}</span>
-                <button onClick={() => signOut(auth)} className="ml-2 text-rose-400 hover:text-rose-300 text-xs font-bold uppercase tracking-wider transition-colors">Wyloguj</button>
-              </div>
+              {user && (
+                <div className="absolute top-4 right-4 z-30 bg-black/40 backdrop-blur border border-white/10 px-4 py-2 rounded-full flex items-center gap-3 shadow-xl">
+                  <img src={user.photoURL || ''} alt="User" className="w-6 h-6 rounded-full border border-indigo-500/30" />
+                  <span className="text-xs text-slate-300 font-medium truncate max-w-[100px]">{user.displayName}</span>
+                  <button onClick={() => signOut(auth)} className="ml-2 text-rose-400 hover:text-rose-300 text-xs font-bold uppercase tracking-wider transition-colors">Wyloguj</button>
+                </div>
+              )}
 
-              <ImageUploader
-                label="Wgraj zdjęcie sylwetki"
-                image={personBase64}
-                onUpload={handleUserUpload}
-              />
+              {user ? (
+                <ImageUploader
+                  label="Wgraj zdjęcie sylwetki"
+                  image={personBase64}
+                  onUpload={handleUserUpload}
+                />
+              ) : (
+                <div className="flex flex-col items-center justify-center p-8 text-center animate-fade-in-up">
+                  <div className="w-20 h-20 bg-indigo-500/10 rounded-full flex items-center justify-center mb-6 shadow-[0_0_30px_rgba(99,102,241,0.2)]">
+                    <ShieldCheck size={40} className="text-indigo-400" />
+                  </div>
+                  <h3 className="text-xl font-bold text-white mb-2">Prywatność przede wszystkim</h3>
+                  <p className="text-slate-400 max-w-sm mb-8 text-sm leading-relaxed">
+                    Aby zadbać o Twoje bezpieczeństwo, autoryzuj sesję. Twoje zdjęcia "w majtkach" trafią do zaszyfrowanej chmury, a po przymiarce ulegną auto-destrukcji.
+                  </p>
+
+                  <button
+                    onClick={handleGoogleLogin}
+                    disabled={isAuthLoading}
+                    className="bg-white hover:bg-slate-100 text-slate-900 font-bold py-3 px-8 rounded-xl flex items-center gap-3 transition-all hover:scale-105 active:scale-95 shadow-xl"
+                  >
+                    {isAuthLoading ? <Loader2 className="animate-spin" size={20} /> : <LogIn size={20} />}
+                    Zaloguj z Google
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Nowy układ VTON - Wynik pod skanerem */}
@@ -623,24 +613,34 @@ export default function TryOnWidget() {
 
                   {/* Sekcja Wirtualnej Przymiarki - HIBERNACJA (FAZA 2) WYBUDZONA */}
                   <div className="mt-4 pt-4 border-t border-white/10">
-                    <button
-                      onClick={() => handleTryOn()}
-                      disabled={isAppProcessing}
-                      className={`w-full font-bold py-3 px-6 rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 group
-                        ${isAppProcessing
-                          ? 'bg-slate-800 text-slate-500 cursor-not-allowed grayscale shadow-none'
-                          : 'bg-gradient-to-r from-pink-600 to-rose-600 text-white hover:shadow-pink-500/25 hover:scale-[1.02] active:scale-95'}`}
-                    >
-                      {isTryOnLoading ? (
-                        <>
-                          <Loader2 className="animate-spin" /> Generowanie przymiarki...
-                        </>
-                      ) : (
-                        <>
-                          <Wand2 className="text-pink-200 group-hover:rotate-12 transition-transform" /> Zobacz wirtualną przymiarkę
-                        </>
-                      )}
-                    </button>
+                    {!user ? (
+                      <button
+                        onClick={handleGoogleLogin}
+                        className="w-full font-bold py-3 px-6 rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 group bg-slate-800 text-slate-300 hover:bg-slate-700 active:scale-95"
+                      >
+                        <LogIn size={20} className="text-indigo-400 group-hover:-translate-x-1" />
+                        Zaloguj się, by korzystać z AI
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => handleTryOn()}
+                        disabled={isAppProcessing || !personBase64}
+                        className={`w-full font-bold py-3 px-6 rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 group
+                            ${(isAppProcessing || !personBase64)
+                            ? 'bg-slate-800 text-slate-500 cursor-not-allowed grayscale shadow-none'
+                            : 'bg-gradient-to-r from-pink-600 to-rose-600 text-white hover:shadow-pink-500/25 hover:scale-[1.02] active:scale-95'}`}
+                      >
+                        {isTryOnLoading ? (
+                          <>
+                            <Loader2 className="animate-spin" /> Generowanie przymiarki...
+                          </>
+                        ) : (
+                          <>
+                            <Wand2 className="text-pink-200 group-hover:rotate-12 transition-transform" /> Zobacz wirtualną przymiarkę
+                          </>
+                        )}
+                      </button>
+                    )}
                     <p className="text-xs text-slate-400 mt-2 text-center opacity-70">
                       *Generuje podgląd na przykładowej sukience AI
                     </p>
@@ -653,12 +653,14 @@ export default function TryOnWidget() {
                     stylistComment={analysisResult?.stylistComment}
                     garmentDetails={analysisResult?.garmentDetails}
                     onSelectProduct={(url, title) => handleTryOn(url, title)}
-                    forbiddenKeywords={currentCategory === 'SHOES' ? [] : currentCategory === 'ACCESSORIES' ? [] : ['torebka', 'kolczyki', 'szpilki', 'buty']} // Usunięto 'sukienka' itp., VTON poradzi sobie z wszystkim, o ile dostanie model górny/dolny/sukienkę
+                    forbiddenKeywords={currentCategory === 'SHOES' ? [] : currentCategory === 'ACCESSORIES' ? [] : ['torebka', 'kolczyki', 'szpilki', 'buty']}
                     size={isSizeRequired ? mappedSize : undefined}
                     sizeAlternative1={isSizeRequired ? sizeAlt1 : undefined}
                     sizeAlternative2={isSizeRequired ? sizeAlt2 : undefined}
-                    isTryOnLoading={isAppProcessing} // Podajemy mutex do karuzeli jako blokadę stanu
+                    isTryOnLoading={isAppProcessing} // ZADANIE 1: Zabezpieczenie przed auto-fire w muteksie
                     sizeIntelligentFallback={mappedFallback}
+                    isLoggedIn={!!user}
+                    onLoginRequest={handleGoogleLogin}
                   />
                 </div>
               ) : (
