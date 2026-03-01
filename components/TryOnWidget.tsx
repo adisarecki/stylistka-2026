@@ -140,13 +140,23 @@ export default function TryOnWidget() {
     // Użyj przekazanego URL lub domyślnego
     const selectedClothing = clothingImageUrl || "https://raw.githubusercontent.com/yisol/IDM-VTON/main/asserts/examples/garments/00055_00.jpg";
 
+    // Dynamiczna decyzja o kategorii dla Replicate
+    let replicateCategory = 'upper_body';
+    const qForCategory = (analysisResult?.apiQuery || itemQuery).toLowerCase();
+    if (qForCategory.includes('sukienk') || qForCategory.includes('dress')) {
+      replicateCategory = 'dresses';
+    } else if (qForCategory.includes('spodni') || qForCategory.includes('spódnic') || qForCategory.includes('szort') || qForCategory.includes('jeans')) {
+      replicateCategory = 'lower_body';
+    }
+
     try {
       const response = await fetch('/api/try-on', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           personImage: personBase64,
-          clothingImage: selectedClothing
+          clothingImage: selectedClothing,
+          category: replicateCategory
         }),
       });
 
@@ -309,7 +319,6 @@ export default function TryOnWidget() {
                         <option value="38" className="bg-slate-900">M (38)</option>
                         <option value="40" className="bg-slate-900">L (40)</option>
                         <option value="42" className="bg-slate-900">XL (42)</option>
-                        <option value="44" className="bg-slate-900">XXL (44)</option>
                       </>
                     )}
                   </select>
@@ -395,8 +404,8 @@ export default function TryOnWidget() {
                     <p className="text-slate-100 leading-relaxed font-medium">{analysisResult.avoid}</p>
                   </div>
 
-                  {/* Sekcja Wirtualnej Przymiarki - HIBERNACJA (FAZA 2) */}
-                  <div className="hidden mt-4 pt-4 border-t border-white/10">
+                  {/* Sekcja Wirtualnej Przymiarki - HIBERNACJA (FAZA 2) WYBUDZONA */}
+                  <div className="mt-4 pt-4 border-t border-white/10">
                     <button
                       onClick={() => handleTryOn()}
                       disabled={isTryOnLoading}
@@ -431,9 +440,9 @@ export default function TryOnWidget() {
                     )}
                   </div>
 
-                  {/* Wynik Przymiarki - HIBERNACJA */}
+                  {/* Wynik Przymiarki - HIBERNACJA WYBUDZONA */}
                   {tryOnResult && (
-                    <div className="hidden mt-2 animate-fade-in-up">
+                    <div className="mt-2 animate-fade-in-up">
                       <h4 className="text-lg font-bold text-slate-100 mb-3 flex items-center gap-2">
                         <Sparkles className="text-pink-400" /> Twój nowy look:
                       </h4>
@@ -470,7 +479,7 @@ export default function TryOnWidget() {
 
             <div className="mt-6">
               {tryOnResult && (
-                <div className="hidden flex flex-col gap-4">
+                <div className="flex flex-col gap-4">
                   <h4 className="text-xl font-bold text-slate-100 mb-2 flex items-center gap-3">
                     <span className="text-amber-400">Przymiarka</span>
                   </h4>

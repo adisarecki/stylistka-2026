@@ -83,8 +83,8 @@ Nasza „polisa ubezpieczeniowa” to Billing Account ID: **01A30A-587CA2-4E6028
 - `/app/api/products`: Serce zakupów – filtrowany silnik Serper.dev.
 - `/app/api/try-on`: Laboratorium – generowanie wirtualnej przymiarki.
 
-> [!IMPORTANT]
-> **UWAGA**: Moduł Wirtualnej Przymierzalni (IDM-VTON) jest obecnie w stanie uśpienia (Ukryty w UI, zachowany w kodzie) i czeka na wdrożenie w Fazie 2. System koncentruje się obecnie na maksymalizacji trafności lejka zakupowego.
+> [!TIP]
+> **UWAGA**: Moduł Wirtualnej Przymierzalni (IDM-VTON) został wybudzony (Wersja Beta) i zintegrowany z interfejsem aplikacji! Wymaga on poprawnej konfiguracji tokenu Replicate.
 
 ## UI Components System
 
@@ -131,6 +131,12 @@ Przed pierwszą aktualizacją produkcyjną lub w przypadku zmiany kluczy, należ
 3. Monitoruj status budowania w panelu Vercel (Dashboard).
 
 ## Historia Rozwoju (Changelog)
+
+- **Tip Top (Faza 1.5 i Faza 2.0)**: 
+  - **Naprawa usterki (O2O)**: Linki "Lokalnych Perełek" w karuzeli od teraz poprawnie zintegrowane i otwierają zewnętrzne strony (np. Facebook) w nowych kartach.
+  - **Wirtualna Przymierzalnia (VTON Beta)**: Wybudzono funkcjonalność przymierzalni IDM-VTON. Dodano przycisk "Przymierz" z dynamicznym wstrzykiwaniem kategorii ubioru do modelu Replicate.
+  - **Dynamiczne Rozmiary**: Wyrównano skale i wartości wejściowe zależnie od kategorii wykrytego produktu.
+  - **Smart UI & Geolokalizacja**: Usunięto inwazyjne filtry płci oraz potwierdzono poprawną kaskadę Fallback dla określania bieżącej lokalizacji użytkownika.
 
 - **2026-02-26**: 
   - Wdrożenie modułu **Lokalny Pomost (Faza 1.5)**: Header geolokalizacji, wstrzykiwanie "Lokalnych Perełek" z bazą butików offline do karuzeli w celach O2O.

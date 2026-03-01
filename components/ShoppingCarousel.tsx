@@ -12,6 +12,7 @@ interface Product {
   store: string;
   imageUrl: string;
   link: string;
+  websiteUrl?: string;
   isLocal?: boolean;
   distance?: string;
 }
@@ -187,7 +188,7 @@ export default function ShoppingCarousel({
                 <div className="flex flex-col gap-2 mt-auto">
                   <div className="flex gap-2">
                     <a
-                      href={product.link}
+                      href={product.websiteUrl || product.link}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="flex-1 text-center bg-white/10 hover:bg-white/20 text-slate-200 font-medium py-2 rounded-xl transition-all text-xs flex items-center justify-center gap-1"
@@ -196,7 +197,7 @@ export default function ShoppingCarousel({
                     </a>
                     <button
                       onClick={() => onSelectProduct(product.imageUrl)} // Google Image URL for Try-On
-                      className="hidden flex-1 bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-2 rounded-xl transition-all text-xs flex items-center justify-center gap-1 shadow-lg shadow-indigo-500/20"
+                      className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-2 rounded-xl transition-all text-xs flex items-center justify-center gap-1 shadow-lg shadow-indigo-500/20"
                     >
                       Przymierz <Shirt size={12} />
                     </button>

@@ -6,6 +6,7 @@
         "store": "Butik Lady eM",
         "imageUrl": "https://images.unsplash.com/photo-1595777457583-95e059d581b8?w=800&q=80",
         "link": "https://www.facebook.com/profile.php?id=100063628373739",
+        "websiteUrl": "https://www.facebook.com/profile.php?id=100063628373739",
         "isLocal": true,
         "distance": "2.5 km",
         "availableSizes": [
@@ -24,6 +25,7 @@
         "store": "Butik Verona",
         "imageUrl": "https://images.unsplash.com/photo-1591369822096-0d4ee16ac0b7?w=800&q=80",
         "link": "https://www.instagram.com/explore/tags/butikverona/",
+        "websiteUrl": "https://www.instagram.com/explore/tags/butikverona/",
         "isLocal": true,
         "distance": "3.1 km",
         "availableSizes": [
@@ -42,6 +44,7 @@
         "store": "SneakerSpot",
         "imageUrl": "https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=800&q=80",
         "link": "https://www.instagram.com/explore/tags/sneaker/",
+        "websiteUrl": "https://www.instagram.com/explore/tags/sneaker/",
         "isLocal": true,
         "distance": "1.2 km",
         "availableSizes": [
@@ -63,6 +66,7 @@
         "store": "Butik Elegance",
         "imageUrl": "https://images.unsplash.com/photo-1584916201218-f4242ceb4809?w=800&q=80",
         "link": "https://www.facebook.com/profile.php",
+        "websiteUrl": "https://www.facebook.com/profile.php",
         "isLocal": true,
         "distance": "4.5 km",
         "categories": [
