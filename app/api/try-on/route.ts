@@ -3,7 +3,8 @@ import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { db, storage } from "@/lib/firebase";
 import { doc, getDoc, setDoc, deleteDoc } from "firebase/firestore";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
+
 
 // ZADANIE 2: Niezawodna Detekcja Kategorii (Fallback)
 function detectGarmentCategory(title: string | undefined): 'upper_body' | 'lower_body' | 'dresses' {
@@ -19,6 +20,7 @@ const replicate = new Replicate({
 });
 
 export async function POST(req: Request) {
+  let proxyStorageRef: any = null;
   try {
     const { personImage, clothingImage, category, productTitle, bodyTypeModifier } = await req.json();
 
@@ -95,6 +97,7 @@ export async function POST(req: Request) {
           const fileId = `garm_proxy_${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`;
 
           const storageRef = ref(storage, `proxied/${fileId}`);
+          proxyStorageRef = storageRef;
 
           // Bezpieczny upload buforu Uint8Array dla SDK klienckiego
           const uint8Array = new Uint8Array(arrayBuffer);
@@ -182,11 +185,26 @@ export async function POST(req: Request) {
     // KROK 5: CLEANUP Mutexa - zwolnienie zasobu na sukces
     await deleteDoc(doc(db, 'active_sessions', 'singleton-vton-session'));
 
+    // KROK 6: CLEANUP STORAGE - usunięcie proxy image
+    if (proxyStorageRef) {
+      try {
+        await deleteObject(proxyStorageRef);
+        console.log('SUKCES CLEANUP: Usunięto tymczasowy obraz Proxy ze Storage Firebase.');
+      } catch (cleanupErr: any) {
+        console.warn('OSTRZEŻENIE CLEANUP:', cleanupErr.message);
+      }
+    }
+
     return NextResponse.json({ imageUrl: finalImageUrl });
   } catch (error: any) {
     // ZADANIE 1: Bezpieczny Backend (Ochrona przed limitem Burst=1)
     if (error?.response?.status === 429 || error?.status === 429) {
       console.warn("TRY-ON RATE LIMIT (429): Kolejka Replicate pełna.");
+
+      if (proxyStorageRef) {
+        try { await deleteObject(proxyStorageRef); } catch (e) { }
+      }
+
       return NextResponse.json(
         { error: "RATE_LIMIT", retryAfter: 10 },
         { status: 429 }
@@ -199,6 +217,11 @@ export async function POST(req: Request) {
     try {
       await deleteDoc(doc(db, 'active_sessions', 'singleton-vton-session'));
     } catch (cleanupErr) { console.error('MUTEX CLEANUP ERROR', cleanupErr) }
+
+    // KROK 6: CLEANUP STORAGE w errorze twardym
+    if (proxyStorageRef) {
+      try { await deleteObject(proxyStorageRef); } catch (e) { }
+    }
 
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
