@@ -128,25 +128,29 @@ export async function POST(req: Request) {
     // ZADANIE 2: Automatyczne force_dc dla sukienek zdefiniowane przez Gemini
     const isDress = finalCategory === 'dresses';
 
-    console.log(`[TRY-ON] Krok 5: Wywołanie IDM-VTON – kategoria: ${finalCategory}`);
-    console.log(`[TRY-ON] isDress: ${isDress}`);
-    console.log(`[TRY-ON] human_img: ${human_img}`);
-    console.log(`[TRY-ON] garm_img: ${garm_img}`);
-    console.log(`[TRY-ON] garment_des: ${garment_des}`);
+    // ZADANIE 2: Wzmocnienie "garment_des" (Przełamywanie Maski)
+    let finalGarmentDes = garment_des;
+    if (isDress) {
+      finalGarmentDes += ", FULL LENGTH MAXI DRESS, COVERING LEGS ENTIRELY DOWN TO THE FLOOR";
+    }
 
-    const output = await replicate.run(IDM_VTON_MODEL, {
-      input: {
-        human_img,                         // POLE 1: Zdjęcie użytkownika (bezpieczny link Firebase)
-        garm_img,                          // POLE 2: Zdjęcie odzieży (proxied przez Firebase)
-        garment_des,                       // POLE 3: Opis odzieży dla modelu (z blokadą nóg/szelek)
-        category: finalCategory,           // POLE 4: upper_body | lower_body | dresses
-        force_dc: isDress,                 // POLE 5: Zgodnie ze specyfikacją Replicate (DressCode dla sukienek)
-        num_inference_steps: 30,
-        guidance_scale: 2.5,
-        seed: 42,
-        crop: false
-      }
-    });
+    const replicatePayload = {
+      human_img,                         // POLE 1: Zdjęcie użytkownika
+      garm_img,                          // POLE 2: Zdjęcie odzieży
+      garment_des: finalGarmentDes,      // POLE 3: Opis odzieży (z twardym narzuceniem długości)
+      category: finalCategory,           // POLE 4: upper_body | lower_body | dresses
+      force_dc: isDress,                 // POLE 5: Zgodnie ze specyfikacją Replicate
+      num_inference_steps: 30,
+      guidance_scale: 2.5,
+      seed: 42,
+      crop: false                        // ZADANIE 3: Blokada ucinania krawędzi (Crop=false)
+    };
+
+    console.log(`[TRY-ON] Krok 5: Wywołanie IDM-VTON – kategoria: ${finalCategory}`);
+    // ZADANIE 1: Twardy dowód w logach (Weryfikacja Payloadu)
+    console.log(`[TRY-ON] PAYLOAD WYSYŁANY DO REPLICATE:\n${JSON.stringify(replicatePayload, null, 2)}`);
+
+    const output = await replicate.run(IDM_VTON_MODEL, { input: replicatePayload });
 
     // IDM-VTON zwraca URI (string lub array)
     const resultUri = Array.isArray(output) ? String(output[0]) : String(output);
