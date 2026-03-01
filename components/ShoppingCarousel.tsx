@@ -23,14 +23,16 @@ export default function ShoppingCarousel({
   stylistComment,
   onSelectProduct,
   forbiddenKeywords = [],
-  size
+  size,
+  isTryOnLoading = false
 }: {
   searchQuery: string,
   uiTitle?: string,
   stylistComment?: string,
   onSelectProduct: (url: string, title?: string) => void,
   forbiddenKeywords?: string[],
-  size?: string
+  size?: string,
+  isTryOnLoading?: boolean
 }) {
   const { location } = useLocation();
   const [products, setProducts] = useState<Product[]>([]);
@@ -196,10 +198,14 @@ export default function ShoppingCarousel({
                       Sprawdź <ExternalLink size={12} />
                     </a>
                     <button
-                      onClick={() => onSelectProduct(product.imageUrl, product.name)} // Dodano product.name dla VTON Control Layer
-                      className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-2 rounded-xl transition-all text-xs flex items-center justify-center gap-1 shadow-lg shadow-indigo-500/20"
+                      onClick={() => !isTryOnLoading && onSelectProduct(product.imageUrl, product.name)}
+                      disabled={isTryOnLoading}
+                      className={`flex-1 font-medium py-2 rounded-xl transition-all text-xs flex items-center justify-center gap-1 shadow-lg
+                        ${isTryOnLoading
+                          ? 'bg-slate-700 text-slate-400 cursor-not-allowed border border-slate-600'
+                          : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-500/20'}`}
                     >
-                      Przymierz <Shirt size={12} />
+                      {isTryOnLoading ? 'Zajęta...' : 'Przymierz'} <Shirt size={12} />
                     </button>
                   </div>
 

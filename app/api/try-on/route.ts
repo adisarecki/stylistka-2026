@@ -79,6 +79,15 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ imageUrl: finalImageUrl });
   } catch (error: any) {
+    // ZADANIE 1: Bezpieczny Backend (Ochrona przed limitem Burst=1)
+    if (error?.response?.status === 429 || error?.status === 429) {
+      console.warn("TRY-ON RATE LIMIT (429): Kolejka Replicate pełna.");
+      return NextResponse.json(
+        { error: "RATE_LIMIT", retryAfter: 10 },
+        { status: 429 }
+      );
+    }
+
     console.error("BŁĄD REPLICATE:", error.message);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

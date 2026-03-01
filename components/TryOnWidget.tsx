@@ -5,6 +5,14 @@ import { Sparkles, Wand2, Loader2, ShieldCheck, Lightbulb, AlertTriangle, ScanLi
 import ImageUploader from './ImageUploader';
 import ShoppingCarousel from './ShoppingCarousel';
 
+// ZADANIE 3: Kolejka Zapytań (Rozwiązanie PRO na limit burst=1 API Replicate)
+let tryOnQueue = Promise.resolve();
+
+function enqueueTryOn(task: () => Promise<void>) {
+  tryOnQueue = tryOnQueue.then(task).catch(console.error);
+  return tryOnQueue;
+}
+
 // Helper: Optymalizacja obrazu do formatu produkcyjnego
 const processImage = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
@@ -132,51 +140,62 @@ export default function TryOnWidget() {
     }
   };
 
-  const handleTryOn = async (clothingImageUrl?: string, clothingTitle?: string) => {
-    if (!personBase64) return;
-    setIsTryOnLoading(true);
-    setTryOnImage(null);
+  const handleTryOn = (clothingImageUrl?: string, clothingTitle?: string) => {
+    if (!personBase64 || isTryOnLoading) return;
 
-    // Użyj przekazanego URL lub domyślnego
-    const selectedClothing = clothingImageUrl || "https://raw.githubusercontent.com/yisol/IDM-VTON/main/asserts/examples/garments/00055_00.jpg";
-    const title = clothingTitle || analysisResult?.apiQuery || itemQuery || "Elegancka odzież";
-    const bodyModifier = analysisResult?.tip ? ` ${analysisResult.tip}` : "";
+    // ZADANIE 3: Enqueue chroniący przed burst=1
+    enqueueTryOn(async () => {
+      setIsTryOnLoading(true);
+      setTryOnImage(null);
+      setError(null);
 
-    // Dynamiczna decyzja o kategorii dla Replicate
-    let replicateCategory = 'upper_body';
-    const qForCategory = (analysisResult?.apiQuery || itemQuery).toLowerCase();
-    if (qForCategory.includes('sukienk') || qForCategory.includes('dress')) {
-      replicateCategory = 'dresses';
-    } else if (qForCategory.includes('spodni') || qForCategory.includes('spódnic') || qForCategory.includes('szort') || qForCategory.includes('jeans')) {
-      replicateCategory = 'lower_body';
-    }
+      // Użyj przekazanego URL lub domyślnego
+      const selectedClothing = clothingImageUrl || "https://raw.githubusercontent.com/yisol/IDM-VTON/main/asserts/examples/garments/00055_00.jpg";
+      const title = clothingTitle || analysisResult?.apiQuery || itemQuery || "Elegancka odzież";
+      const bodyModifier = analysisResult?.tip ? ` ${analysisResult.tip}` : "";
 
-    try {
-      const response = await fetch('/api/try-on', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          personImage: personBase64,
-          clothingImage: selectedClothing,
-          category: replicateCategory,
-          productTitle: title,
-          bodyTypeModifier: bodyModifier
-        }),
-      });
+      // Dynamiczna decyzja o kategorii dla Replicate
+      let replicateCategory = 'upper_body';
+      const qForCategory = (analysisResult?.apiQuery || itemQuery).toLowerCase();
+      if (qForCategory.includes('sukienk') || qForCategory.includes('dress')) {
+        replicateCategory = 'dresses';
+      } else if (qForCategory.includes('spodni') || qForCategory.includes('spódnic') || qForCategory.includes('szort') || qForCategory.includes('jeans')) {
+        replicateCategory = 'lower_body';
+      }
 
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Błąd generowania przymiarki");
+      try {
+        const response = await fetch('/api/try-on', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            personImage: personBase64,
+            clothingImage: selectedClothing,
+            category: replicateCategory,
+            productTitle: title,
+            bodyTypeModifier: bodyModifier
+          }),
+        });
 
-      // ZADANIE 2: Wymuszenie stringa przez interpolację
-      const cleanStringUrl = `${data.imageUrl}`;
-      console.log("Czysty URL do wyrenderowania:", cleanStringUrl);
-      setTryOnImage(cleanStringUrl);
-    } catch (err: any) {
-      console.error("Try-On Error:", err);
-      setError("Nie udało się wygenerować przymiarki: " + err.message);
-    } finally {
-      setIsTryOnLoading(false);
-    }
+        const data = await response.json();
+
+        // Specjalna obsługa Rate Limit (429) rzuconego celowo przez backend
+        if (response.status === 429 || data.error === "RATE_LIMIT") {
+          throw new Error("Wirtualna stylistka jest w tej chwili mocno obciążona. Poczekaj kilka sekund i kliknij ponownie.");
+        }
+
+        if (!response.ok) throw new Error(data.error || "Błąd generowania przymiarki");
+
+        // ZADANIE 2: Wymuszenie stringa przez interpolację
+        const cleanStringUrl = `${data.imageUrl}`;
+        console.log("Czysty URL do wyrenderowania:", cleanStringUrl);
+        setTryOnImage(cleanStringUrl);
+      } catch (err: any) {
+        console.error("Try-On Error:", err);
+        setError(err.message || "Nie udało się wygenerować przymiarki");
+      } finally {
+        setIsTryOnLoading(false);
+      }
+    }); // Zamknięcie enqueueTryOn
   };
 
   return (
@@ -476,6 +495,7 @@ export default function TryOnWidget() {
                     onSelectProduct={(url, title) => handleTryOn(url, title)}
                     forbiddenKeywords={currentCategory === 'SHOES' ? [] : currentCategory === 'ACCESSORIES' ? [] : ['torebka', 'kolczyki', 'szpilki', 'buty']} // Usunięto 'sukienka' itp., VTON poradzi sobie z wszystkim, o ile dostanie model górny/dolny/sukienkę
                     size={isSizeRequired ? sizeQuery : undefined}
+                    isTryOnLoading={isTryOnLoading}
                   />
                 </div>
               ) : (
