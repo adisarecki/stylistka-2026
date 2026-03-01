@@ -1,7 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Sparkles, Wand2, Loader2, ShieldCheck, Lightbulb, AlertTriangle, ScanLine, Crown, OctagonX, Star, ChevronDown } from 'lucide-react';
+import { Sparkles, Wand2, Loader2, ShieldCheck, Lightbulb, AlertTriangle, ScanLine, Crown, OctagonX, Star, ChevronDown, LogIn } from 'lucide-react';
+import { auth } from '@/lib/firebase';
+import { signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut, User } from 'firebase/auth';
 import ImageUploader from './ImageUploader';
 import ShoppingCarousel from './ShoppingCarousel';
 
@@ -46,6 +48,9 @@ const processImage = (file: File): Promise<string> => {
   });
 };
 
+// ZADANIE 4 (MODUŁ 4): Typy i sylwetki (do Promptowania z Gemini AI)
+type BodyShape = 'JABŁKO' | 'GRUSZKA' | 'KLEPSYDRA' | 'KOLUMNA' | 'ROŻEK' | 'NIEZNANA';
+
 export default function TryOnWidget() {
   const [personBase64, setPersonBase64] = useState<string | null>(null);
   const [analysisResult, setAnalysisResult] = useState<{
@@ -55,6 +60,7 @@ export default function TryOnWidget() {
     uiTitle?: string;
     apiQuery?: string;
     stylistComment?: string;
+    bodyShape?: BodyShape;
     garmentDetails?: {
       color?: string;
       garmentType?: string;
@@ -77,17 +83,28 @@ export default function TryOnWidget() {
   const [isAppProcessing, setIsAppProcessing] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
 
-  // ZADANIE 4: System tworzenia anonimowych identyfikatorów userId
-  const [userId, setUserId] = useState<string | null>(null);
+  // ZADANIE 4 (MODUŁ 1): System prawdziwej autoryzacji Google Auth (Firebase)
+  const [user, setUser] = useState<User | null>(null);
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
 
   useEffect(() => {
-    let storedId = localStorage.getItem('stylistka_user_id');
-    if (!storedId) {
-      storedId = `user_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-      localStorage.setItem('stylistka_user_id', storedId);
-    }
-    setUserId(storedId);
+    // Nasłuchiwanie stanu logowania
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      setIsAuthLoading(false);
+    });
+    return () => unsubscribe();
   }, []);
+
+  const handleGoogleLogin = async () => {
+    try {
+      const provider = new GoogleAuthProvider();
+      await signInWithPopup(auth, provider);
+    } catch (err: any) {
+      console.error("Auth OOPS:", err);
+      setError("Nie udało się zalogować. Spróbuj ponownie.");
+    }
+  };
 
   // Dynamiczna detekcja kategorii
   const detectCategory = (query: string) => {
@@ -144,6 +161,7 @@ export default function TryOnWidget() {
         uiTitle: data.uiTitle || "Wybrane dla Ciebie",
         apiQuery: data.apiQuery || itemQuery || "odzież",
         stylistComment: data.stylistComment,
+        bodyShape: data.bodyShape || 'NIEZNANA',
         garmentDetails: data.garmentDetails
       });
     } catch (err: any) {
@@ -167,7 +185,16 @@ export default function TryOnWidget() {
     // Użyj przekazanego URL lub domyślnego
     const selectedClothing = clothingImageUrl || "https://raw.githubusercontent.com/yisol/IDM-VTON/main/asserts/examples/garments/00055_00.jpg";
     const title = clothingTitle || analysisResult?.apiQuery || itemQuery || "Elegancka odzież";
-    const bodyModifier = analysisResult?.tip ? ` ${analysisResult.tip}` : "";
+
+    // ZADANIE 4: Moduł 4 (Ulepszone Prompty Sylwetki)
+    let bodyModifier = analysisResult?.tip ? ` ${analysisResult.tip}` : "";
+
+    const shape = analysisResult?.bodyShape;
+    if (shape === 'JABŁKO') bodyModifier += " +empire +maskująca talia +luźny obrys ciała";
+    else if (shape === 'GRUSZKA') bodyModifier += " +rozkloszowana +balans biodra +podkreślona góra z wcięciem";
+    else if (shape === 'KLEPSYDRA') bodyModifier += " +dopasowana +podkreśla talię +sylwetka opięta";
+    else if (shape === 'KOLUMNA') bodyModifier += " +warstwowa +objętość +struktura geometryczna";
+    else if (shape === 'ROŻEK') bodyModifier += " +rozkloszowana dół +uwypukla biodra";
 
     // Dynamiczna decyzja o kategorii dla Replicate
     let replicateCategory = 'upper_body';
@@ -178,12 +205,13 @@ export default function TryOnWidget() {
       replicateCategory = 'lower_body';
     }
 
-    const fetchTryOnWithRetry = async (retries = 1): Promise<any> => {
+    const fetchTryOnWithRetry = async (retries = 5): Promise<any> => {
       try {
         const response = await fetch('/api/try-on', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
+            uid: user?.uid,
             personImage: personBase64,
             clothingImage: selectedClothing,
             category: replicateCategory,
@@ -213,7 +241,7 @@ export default function TryOnWidget() {
     };
 
     try {
-      const data = await fetchTryOnWithRetry(1);
+      const data = await fetchTryOnWithRetry(5);
 
       // ZADANIE 2: Wymuszenie stringa przez interpolację
       const cleanStringUrl = `${data.imageUrl}`;
@@ -283,11 +311,11 @@ export default function TryOnWidget() {
     }
 
     // Cichy zapis profilowy do bazy Firebase (Fire & Forget)
-    if (predictedSize && userId && !isAnalyzing) {
+    if (predictedSize && user?.uid && !isAnalyzing) {
       fetch('/api/user-profile', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, zalandoSize: predictedSize, chestCm: chestCm })
+        body: JSON.stringify({ userId: user.uid, zalandoSize: predictedSize, chestCm: chestCm })
       }).catch(() => { });
     }
 
@@ -309,19 +337,52 @@ export default function TryOnWidget() {
               <ScanLine className="text-indigo-400 animate-pulse" /> Skaner Sylwetki AI
             </h2>
 
-            <div className="relative rounded-2xl overflow-hidden border-2 border-dashed border-slate-700/50 hover:border-indigo-500/50 transition-colors bg-slate-900/50 min-h-[400px] flex items-center justify-center">
+            <div className={`relative rounded-2xl overflow-hidden border-2 border-dashed transition-colors min-h-[400px] flex items-center justify-center
+              ${!user ? 'border-slate-800 bg-slate-900/30' : 'border-slate-700/50 hover:border-indigo-500/50 bg-slate-900/50'}`}>
+
               {/* Animacja skanowania */}
-              {isAnalyzing && (
+              {isAnalyzing && user && (
                 <div className="absolute inset-0 z-20 pointer-events-none">
                   <div className="w-full h-1 bg-indigo-500 shadow-[0_0_15px_2px_rgba(99,102,241,0.8)] animate-scan" />
                 </div>
               )}
 
-              <ImageUploader
-                label="Wgraj zdjęcie sylwetki"
-                image={personBase64}
-                onUpload={handleUserUpload}
-              />
+              {/* Tarcza Prywatności / Wgrywanie zdjęcia */}
+              {!user ? (
+                <div className="flex flex-col items-center justify-center p-8 text-center animate-fade-in-up">
+                  <div className="w-20 h-20 bg-indigo-500/10 rounded-full flex items-center justify-center mb-6 shadow-[0_0_30px_rgba(99,102,241,0.2)]">
+                    <ShieldCheck size={40} className="text-indigo-400" />
+                  </div>
+                  <h3 className="text-xl font-bold text-white mb-2">Prywatność przede wszystkim</h3>
+                  <p className="text-slate-400 max-w-sm mb-8 text-sm leading-relaxed">
+                    Aby zadbać o Twoje bezpieczeństwo, autoryzuj sesję. Twoje zdjęcia "w majtkach" trafią do zaszyfrowanej chmury, a po przymiarce ulegną auto-destrukcji.
+                  </p>
+
+                  <button
+                    onClick={handleGoogleLogin}
+                    disabled={isAuthLoading}
+                    className="bg-white hover:bg-slate-100 text-slate-900 font-bold py-3 px-8 rounded-xl flex items-center gap-3 transition-all hover:scale-105 active:scale-95 shadow-xl"
+                  >
+                    {isAuthLoading ? <Loader2 className="animate-spin" size={20} /> : <LogIn size={20} />}
+                    Zaloguj z Google
+                  </button>
+                </div>
+              ) : (
+                <>
+                  {/* Pasek profilu po zalogowaniu */}
+                  <div className="absolute top-4 right-4 z-30 bg-black/40 backdrop-blur border border-white/10 px-4 py-2 rounded-full flex items-center gap-3">
+                    <img src={user.photoURL || ''} alt="User" className="w-6 h-6 rounded-full" />
+                    <span className="text-xs text-slate-300 font-medium truncate max-w-[100px]">{user.displayName}</span>
+                    <button onClick={() => signOut(auth)} className="ml-2 text-rose-400 hover:text-rose-300 text-xs font-bold uppercase tracking-wider">Wyloguj</button>
+                  </div>
+
+                  <ImageUploader
+                    label="Wgraj zdjęcie sylwetki"
+                    image={personBase64}
+                    onUpload={handleUserUpload}
+                  />
+                </>
+              )}
             </div>
 
             {/* Nowy układ VTON - Wynik pod skanerem */}
@@ -475,9 +536,9 @@ export default function TryOnWidget() {
               {/* Przycisk Mocy */}
               <button
                 onClick={handleAnalyzeSilhouette}
-                disabled={!personBase64 || isAnalyzing || isAppProcessing || (isSizeRequired && !chestCircumference.trim())}
+                disabled={!personBase64 || !user || isAnalyzing || isAppProcessing || (isSizeRequired && !chestCircumference.trim())}
                 className={`w-full relative group overflow-hidden rounded-xl py-4 font-bold text-lg text-white shadow-lg transition-all duration-300 hover:scale-[1.02] hover:shadow-indigo-500/25 active:scale-95
-                  ${(!personBase64 || isAnalyzing || isAppProcessing || (isSizeRequired && !chestCircumference.trim()))
+                  ${(!personBase64 || !user || isAnalyzing || isAppProcessing || (isSizeRequired && !chestCircumference.trim()))
                     ? 'bg-slate-800 text-slate-500 cursor-not-allowed grayscale'
                     : 'bg-gradient-to-r from-violet-600 to-indigo-600 shadow-glow'}`}
               >

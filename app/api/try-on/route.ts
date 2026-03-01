@@ -21,8 +21,17 @@ const replicate = new Replicate({
 
 export async function POST(req: Request) {
   let proxyStorageRef: any = null;
+  let userImageStorageRef: any = null;
+  let globalUid: string = '';
+
   try {
-    const { personImage, clothingImage, category, productTitle, bodyTypeModifier } = await req.json();
+    const { uid, personImage, clothingImage, category, productTitle, bodyTypeModifier } = await req.json();
+
+    if (!uid) {
+      return NextResponse.json({ error: "Brak autoryzacji sesji. Zaloguj się by dokonać przymiarki." }, { status: 401 });
+    }
+
+    globalUid = uid;
 
     // Logowanie diagnostyczne dla terminala
     console.log('--- START PRZYMIERZALNI ---');
@@ -31,8 +40,10 @@ export async function POST(req: Request) {
 
     // KROK -2: VTON CACHE (PAMIĘĆ WYNIKÓW)
     console.log('--- PIPELINE: FIRESTORE CACHE ---');
-    // Generowanie stabilnego Hasha MD5 z parametrów wejściowych (bez przymiotników modyfikujących body)
-    const hashString = `${personImage.substring(0, 100)}_${clothingImage}_${category}_${productTitle}`;
+    // Generowanie stabilnego Hasha MD5 (Optymalizacja Base64)
+    // Tniemy ogromny base64 do fingerprintu (np. pierwsze 200 znaków trzonowych) i łączymy z linkiem sklepu 
+    const humanFingerprint = personImage.substring(personImage.indexOf(',') + 1, personImage.indexOf(',') + 201);
+    const hashString = `${uid}_${humanFingerprint}_${clothingImage}_${category}_${productTitle}`;
     const cacheHash = crypto.createHash('md5').update(hashString).digest('hex');
     const cacheRef = doc(db, 'vton_cache', cacheHash);
 
@@ -46,12 +57,10 @@ export async function POST(req: Request) {
       console.warn("CACHE READ WARNING:", cacheErr.message);
     }
 
-    // KROK -1: FIRESTORE GLOBAL MUTEX (Zabezpieczenie przed błędem 429)
+    // KROK -1: FIRESTORE PER-USER MUTEX (Zabezpieczenie przed Kolejkowaniem API pod jedno konto)
     console.log('--- PIPELINE: FIRESTORE MUTEX ---');
-    // Generujemy syntetyczne IP docelowo, w prawdziwej aplikacji byłoby to np. localStorage UUID z Frontendu
-    // Ponieważ nie mamy pewności co do stanu frontendu, robimy symulowaną kolejkę na całą platformę "Global Lock"
-    const GLOBAL_SESSION_ID = 'singleton-vton-session';
-    const sessionRef = doc(db, 'active_sessions', GLOBAL_SESSION_ID);
+    // Blokada jest teraz nakładana na konkretnego użytkownika (wiele osób może korzystać naraz z Vercel, ale jednostka ma ratelimit)
+    const sessionRef = doc(db, 'active_sessions', uid);
 
     const sessionDoc = await getDoc(sessionRef);
     if (sessionDoc.exists() && sessionDoc.data()?.status === 'processing') {
@@ -73,7 +82,28 @@ export async function POST(req: Request) {
     // Zakluczenie zasobu Serwera
     await setDoc(sessionRef, { status: 'processing', timestamp: Date.now() });
 
-    // KROK 0: IMAGE PROXY (HOTLINK OMINIĘCIE 403 PRZEZ FIREBASE STORAGE)
+    // KROK 0.A: PRIVACY GUARD (Zdjęcie użytkownika na własny Storage)
+    console.log('--- PIPELINE: PRIVACY GUARD (STORAGE) ---');
+    let secureUserImageUrl = '';
+    try {
+      // Dekodowanie Base64 od klienta Data URI do Buforu Binarnego Pamięci
+      const base64Data = (personImage as string).replace(/^data:image\/\w+;base64,/, "");
+      const userImageBuffer = Buffer.from(base64Data, 'base64');
+      const uint8UserArray = new Uint8Array(userImageBuffer);
+
+      const secureAvatarId = `base_user_${Date.now()}_${Math.random().toString(36).substring(7)}.jpg`;
+      userImageStorageRef = ref(storage, `users/${uid}/${secureAvatarId}`);
+
+      await uploadBytes(userImageStorageRef, uint8UserArray, { contentType: 'image/jpeg' });
+      secureUserImageUrl = await getDownloadURL(userImageStorageRef);
+
+      console.log(`SUKCES PRIVACY: Zdjęcie Użytkownika uploadowane dyskretnie na chmurę (${secureUserImageUrl})`);
+    } catch (privacyErr: any) {
+      console.warn('PRIVACY STORAGE ERROR: Nie podołano zabezpieczyć obrazu uzytkownika.', privacyErr.message);
+      throw new Error("Prywatność zawiodła. Serwer odmawia publicznego proxy na wejściu API.");
+    }
+
+    // KROK 0.B: IMAGE PROXY (HOTLINK OMINIĘCIE 403 PRZEZ FIREBASE STORAGE)
     console.log('--- PIPELINE: FIREBASE STORAGE PROXY ---');
     let proxiedClothingImage = clothingImage;
     if (clothingImage && clothingImage.startsWith('http')) {
@@ -149,7 +179,7 @@ export async function POST(req: Request) {
     // ZADANIE 4: Przekazanie zaawansowanego payloadu
     const output = await replicate.run(modelVersion, {
       input: {
-        human_img: personImage,
+        human_img: secureUserImageUrl,
         garm_img: processedClothingImage, // Zdjęcie po Remove-BG
         garment_des: finalPrompt, // Dla starszych/standardowych IDM-VTON
         prompt: finalPrompt, // Czasami używane zamiennie w innych wersjach VTON
@@ -183,7 +213,7 @@ export async function POST(req: Request) {
     }
 
     // KROK 5: CLEANUP Mutexa - zwolnienie zasobu na sukces
-    await deleteDoc(doc(db, 'active_sessions', 'singleton-vton-session'));
+    await deleteDoc(doc(db, 'active_sessions', uid));
 
     // KROK 6: CLEANUP STORAGE - usunięcie proxy image
     if (proxyStorageRef) {
@@ -192,6 +222,16 @@ export async function POST(req: Request) {
         console.log('SUKCES CLEANUP: Usunięto tymczasowy obraz Proxy ze Storage Firebase.');
       } catch (cleanupErr: any) {
         console.warn('OSTRZEŻENIE CLEANUP:', cleanupErr.message);
+      }
+    }
+
+    // KROK 6.B: CLEANUP PRIVACY GUARD - usunięcie pliku użytkownika pod RODO
+    if (userImageStorageRef) {
+      try {
+        await deleteObject(userImageStorageRef);
+        console.log('SUKCES CLEANUP PRIVACY: Usunięto prywatne zdjęcie Skanera ze Storage Firebase.');
+      } catch (cleanupErr: any) {
+        console.warn('OSTRZEŻENIE CLEANUP PRIVACY:', cleanupErr.message);
       }
     }
 
@@ -204,6 +244,9 @@ export async function POST(req: Request) {
       if (proxyStorageRef) {
         try { await deleteObject(proxyStorageRef); } catch (e) { }
       }
+      if (userImageStorageRef) {
+        try { await deleteObject(userImageStorageRef); } catch (e) { }
+      }
 
       return NextResponse.json(
         { error: "RATE_LIMIT", retryAfter: 10 },
@@ -215,12 +258,17 @@ export async function POST(req: Request) {
 
     // KROK 5: CLEANUP Mutexa - zwolnienie zasobu w errorze twardym
     try {
-      await deleteDoc(doc(db, 'active_sessions', 'singleton-vton-session'));
+      if (globalUid) {
+        await deleteDoc(doc(db, 'active_sessions', globalUid));
+      }
     } catch (cleanupErr) { console.error('MUTEX CLEANUP ERROR', cleanupErr) }
 
     // KROK 6: CLEANUP STORAGE w errorze twardym
     if (proxyStorageRef) {
       try { await deleteObject(proxyStorageRef); } catch (e) { }
+    }
+    if (userImageStorageRef) {
+      try { await deleteObject(userImageStorageRef); } catch (e) { }
     }
 
     return NextResponse.json({ error: error.message }, { status: 500 });

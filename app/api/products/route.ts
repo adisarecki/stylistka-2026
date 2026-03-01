@@ -44,10 +44,10 @@ export async function GET(req: Request) {
           // Parametryczne zapytanie z Gemini (Silnik Zapytań)
           const cutPart = cut ? ` +${cut}` : '';
           const baseQuery = `+${color} +${type}${cutPart}`;
-          finalQuery = `${baseQuery} site:zalando.pl OR site:modivo.pl OR site:answear.com OR site:hm.com -portfolio -fotograf -usługi -sesja -buty -torebka -szpilki`;
+          finalQuery = `${baseQuery} +packshot +"białe tło" site:zalando.pl OR site:modivo.pl OR site:answear.com OR site:hm.com -portfolio -fotograf -usługi -sesja -buty -torebka -szpilki -modelka -editorial`;
         } else {
           // Standardowy Fallback dla starszych wyszukiwań bez meta-danych ubrań
-          finalQuery = `"${searchQuery}" (site:zalando.pl OR site:answear.com OR site:modivo.pl OR site:hm.com) -portfolio -fotograf -sesja -fotografia -usługi`;
+          finalQuery = `"${searchQuery}" +packshot +"białe tło" (site:zalando.pl OR site:answear.com OR site:modivo.pl OR site:hm.com) -portfolio -fotograf -sesja -fotografia -usługi -modelka`;
         }
       }
 
