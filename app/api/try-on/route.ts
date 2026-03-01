@@ -1,7 +1,8 @@
 import Replicate from "replicate";
 import { NextResponse } from "next/server";
-import { db, bucket } from "@/lib/firebaseAdmin";
-
+import { db, storage } from "@/lib/firebase";
+import { doc, getDoc, setDoc, deleteDoc } from "firebase/firestore";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 
 // ZADANIE 2: Niezawodna Detekcja Kategorii (Fallback)
 function detectGarmentCategory(title: string | undefined): 'upper_body' | 'lower_body' | 'dresses' {
@@ -30,10 +31,10 @@ export async function POST(req: Request) {
     // Generujemy syntetyczne IP docelowo, w prawdziwej aplikacji byłoby to np. localStorage UUID z Frontendu
     // Ponieważ nie mamy pewności co do stanu frontendu, robimy symulowaną kolejkę na całą platformę "Global Lock"
     const GLOBAL_SESSION_ID = 'singleton-vton-session';
-    const sessionRef = db.collection('active_sessions').doc(GLOBAL_SESSION_ID);
+    const sessionRef = doc(db, 'active_sessions', GLOBAL_SESSION_ID);
 
-    const sessionDoc = await sessionRef.get();
-    if (sessionDoc.exists && sessionDoc.data()?.status === 'processing') {
+    const sessionDoc = await getDoc(sessionRef);
+    if (sessionDoc.exists() && sessionDoc.data()?.status === 'processing') {
       const lockData = sessionDoc.data();
       const lockAge = Date.now() - (lockData?.timestamp || 0);
 
@@ -50,7 +51,7 @@ export async function POST(req: Request) {
     }
 
     // Zakluczenie zasobu Serwera
-    await sessionRef.set({ status: 'processing', timestamp: Date.now() });
+    await setDoc(sessionRef, { status: 'processing', timestamp: Date.now() });
 
     // KROK 0: IMAGE PROXY (HOTLINK OMINIĘCIE 403 PRZEZ FIREBASE STORAGE)
     console.log('--- PIPELINE: FIREBASE STORAGE PROXY ---');
@@ -75,22 +76,17 @@ export async function POST(req: Request) {
           const ext = mimeType.split('/')[1] || 'jpg';
           const fileId = `garm_proxy_${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`;
 
-          const file = bucket.file(`proxied/${fileId}`);
+          const storageRef = ref(storage, `proxied/${fileId}`);
 
-          // Bezpieczny upload buforu ArrayBuffer (Konwersja na Buffer)
-          const buffer = Buffer.from(arrayBuffer);
-          await file.save(buffer, {
-            metadata: { contentType: mimeType }
-          });
+          // Bezpieczny upload buforu Uint8Array dla SDK klienckiego
+          const uint8Array = new Uint8Array(arrayBuffer);
+          await uploadBytes(storageRef, uint8Array, { contentType: mimeType });
 
-          // Generowanie publicznego Signed URL (Odczyt na 2 godziny dla serwerów Replicate)
-          const [signedUrl] = await file.getSignedUrl({
-            action: 'read',
-            expires: Date.now() + 1000 * 60 * 60 * 2, // 2 Godziny
-          });
+          // Pobranie bezpośredniego linku do pliku ze Storage ("Signed URL" u klienta)
+          const downloadUrl = await getDownloadURL(storageRef);
 
-          proxiedClothingImage = signedUrl;
-          console.log(`SUKCES: Plik odzieży uploadowany na Firebase: ${fileId}`);
+          proxiedClothingImage = downloadUrl;
+          console.log(`SUKCES: Plik odzieży uploadowany na Firebase: ${fileId} (${downloadUrl})`);
         }
 
       } catch (proxyErr: any) {
@@ -153,7 +149,7 @@ export async function POST(req: Request) {
     console.log('SUKCES: Wygenerowano obraz pomyślnie.');
 
     // KROK 5: CLEANUP Mutexa - zwolnienie zasobu na sukces
-    await db.collection('active_sessions').doc('singleton-vton-session').delete();
+    await deleteDoc(doc(db, 'active_sessions', 'singleton-vton-session'));
 
     return NextResponse.json({ imageUrl: finalImageUrl });
   } catch (error: any) {
@@ -170,7 +166,7 @@ export async function POST(req: Request) {
 
     // KROK 5: CLEANUP Mutexa - zwolnienie zasobu w errorze twardym
     try {
-      await db.collection('active_sessions').doc('singleton-vton-session').delete();
+      await deleteDoc(doc(db, 'active_sessions', 'singleton-vton-session'));
     } catch (cleanupErr) { console.error('MUTEX CLEANUP ERROR', cleanupErr) }
 
     return NextResponse.json({ error: error.message }, { status: 500 });

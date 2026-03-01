@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { db } from '@/lib/firebaseAdmin';
+import { db } from '@/lib/firebase';
+import { doc, setDoc } from 'firebase/firestore';
 
 export async function POST(request: Request) {
     try {
@@ -10,10 +11,10 @@ export async function POST(request: Request) {
         }
 
         // ZADANIE 4: Zapisywanie Skali Zalando w Profilu Użytkownika Firestore
-        const userRef = db.collection('users').doc(userId);
+        const userRef = doc(db, 'users', userId);
 
         // Używamy set z parametrem merge, aby aktualizować tylko te pola bez nadpisywania całego dokumentu
-        await userRef.set({
+        await setDoc(userRef, {
             lastActive: new Date().toISOString(),
             ...(zalandoSize && { savedZalandoSize: zalandoSize }),
             ...(chestCm && { savedChestCm: chestCm }),
