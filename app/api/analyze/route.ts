@@ -65,7 +65,16 @@ export async function POST(req: Request) {
           "replicatePrompt": "string" // Np. "long black evening gown, floor length, highly detailed, covering legs"
         }
 
-        Instrukcja dodatkowa: Jako ekspert mody, dla każdego produktu wygeneruj precyzyjny opis po angielsku do modelu VTON (pole replicatePrompt) oraz określ kategorię (replicateCategory). Jeśli to sukienka, zawsze wymuszaj opis długości i zakrycia nóg (np. 'covering legs, covering thick straps, full body dress'). To zapobiegnie halucynacjom modelu obrazkowego.`
+        Instrukcja dodatkowa: Jako AI System Architect, dla każdego rekomendowanego produktu MUSISZ wygenerować dwa dodatkowe pola techniczne, które posłużą jako twardy payload dla modelu IDM-VTON. Są to replicateCategory oraz replicatePrompt.
+        
+        Zasada 1 (replicateCategory): Wybierz ściśle JEDNĄ z trzech wartości: upper_body (dla bluzek, koszul, swetrów, kurtek), lower_body (dla spodni, spódnic), dresses (dla sukienek, sukni, kombinezonów).
+        
+        Zasada 2 (replicatePrompt): Stwórz bardzo krótki, techniczny opis ubrania WYŁĄCZNIE w JĘZYKU ANGIELSKIM. Mają to być tagi oddzielone przecinkami. Zero pełnych zdań, porad czy metafor!
+        
+        ZŁY PRZYKŁAD: 'A beautiful long black dress that makes you look slim.'
+        DOBRY PRZYKŁAD: 'long black evening gown, v-neck, sleeveless'
+
+        ⚠️ ZASADA KRYTYCZNA DLA SUKIENEK (Jeśli kategoria to dresses): Jeśli ubranie jest długie (maxi, do ziemi, wieczorowe), na końcu opisu MUSISZ na sztywno dodać te tagi: , full length maxi dress, covering legs entirely down to the floor, highly detailed. To absolutnie kluczowe, aby przełamać blokadę maskowania na gołych nogach na zdjęciach użytkownika.`
       },
     ];
 

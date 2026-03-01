@@ -114,34 +114,17 @@ export async function POST(req: Request) {
     }
     await setDoc(sessionRef, { status: 'processing', timestamp: Date.now(), uid });
 
-    // === KROK 5: WYWOŁANIE IDM-VTON (Rura AI-to-AI z Gemini) ===
+    // === KROK 5: WYWOŁANIE IDM-VTON (Czysta Rura AI-to-AI z Gemini) ===
 
-    // ZADANIE 2: Czyste przekazanie kategorii z frontendu (od Gemini)
-    // === ZADANIE 1: Kategoria i DressCode (Twarda logika) ===
-    // Weryfikujemy tytuł produktu żeby ZAWSZE złapać sukienkę (niezależnie co twierdzi Gemini na froncie)
-    const productTitleLower = (productTitle || '').toLowerCase();
-    const isDressByTitle = productTitleLower.includes('sukienk') || productTitleLower.includes('suknia') || productTitleLower.includes('dress');
-
-    // Nadpisujemy kategorię jeśli wykryjemy sukienkę twardym regexem
-    const finalCategory = (isDressByTitle || category === 'dresses') ? 'dresses' :
-      (category === 'lower_body' ? 'lower_body' : 'upper_body');
-
+    // ZADANIE 3: Wstrzyknięcie w /api/try-on
+    // Kiedy użytkownik kliknie "Przymierz", frontend przekazuje te dwa pola do /api/try-on.
+    // W payloadzie dla Replicate po prostu przemapuj:
+    const finalCategory = category || 'upper_body'; // "category" na froncie równe jest replicateCategory
     const isDress = finalCategory === 'dresses';
 
-    // === ZADANIE 2: Naprawa opisu garment_des (Koniec z językiem polskim) ===
-    // Pobieramy angielski wymuszacz od Gemini, jeśli jest. Jeśli nie ma - podstawiamy ogólnik.
-    let baseGarmentDes = replicatePrompt || (productTitle || 'photorealistic clothing, highly detailed');
-
-    // ODZINAMY POLSKI bełkot (bodyTypeModifier). Doklejamy go TYLKO dla zwykłych ubrań, a i to z ostrożna.
-    // Dla sukienek wysyłamy TWARDY angielski prompt. 
-    let finalGarmentDes = '';
-
-    if (isDress) {
-      // Sztywny, bezkompromisowy prompt dla modelu ucinający "chińskie ramiączka i mini"
-      finalGarmentDes = `${baseGarmentDes}, FULL LENGTH MAXI DRESS, COVERING LEGS ENTIRELY DOWN TO THE FLOOR, highly detailed`;
-    } else {
-      finalGarmentDes = bodyTypeModifier ? `${baseGarmentDes}. ${bodyTypeModifier}` : baseGarmentDes;
-    }
+    // ZADANIE 1 & 3: garment_des to teraz wyłącznie replicatePrompt, wygenerowany przez Gemini jako twarde angielskie tagi.
+    // Żadnych porad po polsku.
+    const finalGarmentDes = replicatePrompt || productTitle || 'photorealistic clothing, highly detailed';
 
     const replicatePayload = {
       human_img,                         // POLE 1: Zdjęcie użytkownika
