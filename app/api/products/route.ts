@@ -30,14 +30,21 @@ export async function GET(req: Request) {
     console.log('--- DIAGNOSTYKA WYSZUKIWARKI (SERPER) ---');
     console.log('KROK 1: Próba z twardym filtrem rozmiaru:', query);
 
-    const callSerper = async (q: string) => {
+    const callSerper = async (searchQuery: string, useModifiers: boolean = true) => {
+      // Wstrzyknięcie wymuszenia czystego zdjęcia z Google Images dla VTON
+      const finalQuery = useModifiers
+        ? `${searchQuery} packshot OR "zdjęcie produktowe" przodem "białe tło"`
+        : searchQuery;
+
+      console.log('-> Serper Request Q:', finalQuery);
+
       const resp = await fetch('https://google.serper.dev/images', {
         method: 'POST',
         headers: {
           'X-API-KEY': serperApiKey,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ q, num: 10 })
+        body: JSON.stringify({ q: finalQuery, num: 10 })
       });
       if (!resp.ok) {
         const errData = await resp.json();
@@ -49,19 +56,28 @@ export async function GET(req: Request) {
     let data;
     let isAlternative = false;
 
-    // Próba uderzenia z twardym rozmiarem (KROK 1)
+    // Próba uderzenia z twardym rozmiarem i packshotem (KROK 1)
     try {
-      data = await callSerper(query);
+      data = await callSerper(query, true);
 
-      // Jeśli Serper odpowie 200 OK, ale nic nie znajdzie, wymuszamy przejście do Fallbacku
       if (!data.images || data.images.length === 0) {
-        throw new Error("Pusta lista wyników z filtrem rozmiaru");
+        throw new Error("Pusta lista wyników z filtrem rozmiaru i packshotem");
       }
-    } catch (fallbackError: any) {
-      // KROK 2: Graceful Fallback (uruchamia się, gdy brak wyników LUB Serper odrzuci składnię)
-      console.log('⚠️ BRAK WYNIKÓW LUB BŁĄD SKŁADNI. Uruchamiam Graceful Fallback...');
-      data = await callSerper(q || ''); // Szukamy czystego zapytania, bez rozmiaru
-      isAlternative = true;
+    } catch (error1: any) {
+      // KROK 2: Fallback bez rozmiaru, ale z packshotem
+      console.log('⚠️ BRAK WYNIKÓW (KROK 1). Szukam bez rozmiaru, z wymuszeniem packshotu...');
+      try {
+        data = await callSerper(q || '', true);
+        isAlternative = true;
+        if (!data.images || data.images.length === 0) {
+          throw new Error("Pusta lista wyników z samym packshotem");
+        }
+      } catch (error2: any) {
+        // KROK 3: Hard Fallback - całkowicie surowe zapytanie
+        console.log('⚠️ BRAK WYNIKÓW (KROK 2). Uruchamiam Hard Fallback (czyste zapytanie)...');
+        data = await callSerper(q || '', false);
+        isAlternative = true;
+      }
     }
 
     // Mapowanie wyników Serper na format karuzeli
