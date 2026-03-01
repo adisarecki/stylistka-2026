@@ -117,33 +117,42 @@ export async function POST(req: Request) {
     // === KROK 5: WYWOŁANIE IDM-VTON (Rura AI-to-AI z Gemini) ===
 
     // ZADANIE 2: Czyste przekazanie kategorii z frontendu (od Gemini)
-    const finalCategory = category === 'dresses' ? 'dresses' : category === 'lower_body' ? 'lower_body' : 'upper_body';
+    // === ZADANIE 1: Kategoria i DressCode (Twarda logika) ===
+    // Weryfikujemy tytuł produktu żeby ZAWSZE złapać sukienkę (niezależnie co twierdzi Gemini na froncie)
+    const productTitleLower = (productTitle || '').toLowerCase();
+    const isDressByTitle = productTitleLower.includes('sukienk') || productTitleLower.includes('suknia') || productTitleLower.includes('dress');
 
-    // ZADANIE 3: Blokada halucynacji - garment_des to teraz replicatePrompt z Gemini (połączony z modyfikatorem sylwetki)
-    const baseGarmentDes = replicatePrompt || productTitle || 'photorealistic clothing, highly detailed';
-    const garment_des = bodyTypeModifier
-      ? `${baseGarmentDes}. ${bodyTypeModifier}`
-      : baseGarmentDes;
+    // Nadpisujemy kategorię jeśli wykryjemy sukienkę twardym regexem
+    const finalCategory = (isDressByTitle || category === 'dresses') ? 'dresses' :
+      (category === 'lower_body' ? 'lower_body' : 'upper_body');
 
-    // ZADANIE 2: Automatyczne force_dc dla sukienek zdefiniowane przez Gemini
     const isDress = finalCategory === 'dresses';
 
-    // ZADANIE 2: Wzmocnienie "garment_des" (Przełamywanie Maski)
-    let finalGarmentDes = garment_des;
+    // === ZADANIE 2: Naprawa opisu garment_des (Koniec z językiem polskim) ===
+    // Pobieramy angielski wymuszacz od Gemini, jeśli jest. Jeśli nie ma - podstawiamy ogólnik.
+    let baseGarmentDes = replicatePrompt || (productTitle || 'photorealistic clothing, highly detailed');
+
+    // ODZINAMY POLSKI bełkot (bodyTypeModifier). Doklejamy go TYLKO dla zwykłych ubrań, a i to z ostrożna.
+    // Dla sukienek wysyłamy TWARDY angielski prompt. 
+    let finalGarmentDes = '';
+
     if (isDress) {
-      finalGarmentDes += ", FULL LENGTH MAXI DRESS, COVERING LEGS ENTIRELY DOWN TO THE FLOOR";
+      // Sztywny, bezkompromisowy prompt dla modelu ucinający "chińskie ramiączka i mini"
+      finalGarmentDes = `${baseGarmentDes}, FULL LENGTH MAXI DRESS, COVERING LEGS ENTIRELY DOWN TO THE FLOOR, highly detailed`;
+    } else {
+      finalGarmentDes = bodyTypeModifier ? `${baseGarmentDes}. ${bodyTypeModifier}` : baseGarmentDes;
     }
 
     const replicatePayload = {
       human_img,                         // POLE 1: Zdjęcie użytkownika
       garm_img,                          // POLE 2: Zdjęcie odzieży
-      garment_des: finalGarmentDes,      // POLE 3: Opis odzieży (z twardym narzuceniem długości)
+      garment_des: finalGarmentDes,      // POLE 3: Czysty angielski prompt (bez polskich rad dla sukni!)
       category: finalCategory,           // POLE 4: upper_body | lower_body | dresses
-      force_dc: isDress,                 // POLE 5: Zgodnie ze specyfikacją Replicate
+      force_dc: isDress,                 // POLE 5: Wymuszony DressCode dla kategorii dresses
       num_inference_steps: 30,
       guidance_scale: 2.5,
       seed: 42,
-      crop: false                        // ZADANIE 3: Blokada ucinania krawędzi (Crop=false)
+      crop: false                        // ZADANIE 3: Blokada ucinania krawędzi
     };
 
     console.log(`[TRY-ON] Krok 5: Wywołanie IDM-VTON – kategoria: ${finalCategory}`);
