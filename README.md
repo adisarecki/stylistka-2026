@@ -99,10 +99,10 @@ System prezentacji werdyktów AI został oparty na wysokiej jakości komponentac
 
 ### Narzędzia Kontroli Jakości (Internal Tools)
 Projekt zawiera dedykowane skrypty do weryfikacji jakości analiz AI oraz silnika zakupowego:
-- `compare-vision.js`: Automatyczne porównanie werdyktów AI dla różnych typów sylwetek (np. Apple vs Slim) na podstawie obrazów testowych. Wyniki są zapisywane do `test-results.json`.
-- `test-expert.js`: Skrypt do jednostkowego testowania logiki "Expert Stylist" dla konkretnych przypadków brzegowych.
+- `compare-vision.mjs`: Automatyczne porównanie werdyktów AI dla różnych typów sylwetek (np. Apple vs Slim) na podstawie obrazów testowych. Wyniki są zapisywane do `test-results.json`.
+- `test-expert.mjs`: Skrypt do jednostkowego testowania logiki "Expert Stylist" dla konkretnych przypadków brzegowych.
 
-Uruchamianie testów: `node [nazwa-skryptu].js` (wymaga uruchomionego serwera lokalnego na porcie 3000).
+Uruchamianie testów: `node [nazwa-skryptu].mjs` (wymaga uruchomionego serwera lokalnego na porcie 3000).
 
 ## Wdrożenie Produkcyjne i CI/CD (Vercel)
 

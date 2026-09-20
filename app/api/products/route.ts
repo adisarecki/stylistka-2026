@@ -71,6 +71,13 @@ export async function GET(req: Request) {
     let data;
     let isAlternative = false;
 
+interface SerperImageItem {
+  title?: string;
+  link: string;
+  imageUrl: string;
+  source?: string;
+}
+
     // Próba uderzenia z twardym rozmiarem i packshotem (KROK 1)
     try {
       data = await callSerper(query, true);
@@ -78,7 +85,7 @@ export async function GET(req: Request) {
       if (!data.images || data.images.length === 0) {
         throw new Error("Pusta lista wyników z filtrem rozmiaru i packshotem");
       }
-    } catch (error1: any) {
+    } catch {
       // KROK 2: Fallback bez rozmiaru, ale z packshotem
       console.log('⚠️ BRAK WYNIKÓW (KROK 1). Szukam bez rozmiaru, z wymuszeniem packshotu...');
       try {
@@ -87,7 +94,7 @@ export async function GET(req: Request) {
         if (!data.images || data.images.length === 0) {
           throw new Error("Pusta lista wyników z samym packshotem");
         }
-      } catch (error2: any) {
+      } catch {
         // KROK 3: Hard Fallback - całkowicie surowe zapytanie
         console.log('⚠️ BRAK WYNIKÓW (KROK 2). Uruchamiam Hard Fallback (czyste zapytanie)...');
         data = await callSerper(q || '', false);
@@ -96,18 +103,18 @@ export async function GET(req: Request) {
     }
 
     // Mapowanie wyników Serper na format karuzeli
-    const products = data.images?.map((item: any, index: number) => {
+    const products = data.images?.map((item: SerperImageItem, index: number) => {
       let storeName = 'Sklep';
       try {
         const url = new URL(item.link);
         storeName = url.hostname.replace('www.', '');
-      } catch (e) {
+      } catch {
         storeName = item.source || 'Sklep';
       }
 
       return {
         id: `serper-${index}`,
-        name: item.title,
+        name: item.title || 'Produkt',
         price: 'Zobacz ofertę',
         store: storeName,
         imageUrl: item.imageUrl,
@@ -125,9 +132,10 @@ export async function GET(req: Request) {
       garmentMetadata: { color, type, cut, occasion }
     });
 
-  } catch (error: any) {
-    console.error("🔥 SERPER KRYTYCZNY BŁĄD:", error.message);
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : "Błąd serwera wyszukiwarki";
+    console.error("🔥 SERPER KRYTYCZNY BŁĄD:", msg);
     // Jeśli nawet fallback zawiedzie
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

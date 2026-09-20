@@ -17,6 +17,20 @@ interface Product {
   distance?: string;
 }
 
+interface PartnerItem {
+  id: string;
+  name: string;
+  price: string;
+  store: string;
+  imageUrl: string;
+  link: string;
+  websiteUrl?: string;
+  isLocal?: boolean;
+  distance?: string;
+  availableSizes?: string[];
+  categories?: string[];
+}
+
 export default function ShoppingCarousel({
   searchQuery,
   uiTitle,
@@ -56,6 +70,11 @@ export default function ShoppingCarousel({
   const [loading, setLoading] = useState(false);
   const [isAlternative, setIsAlternative] = useState(false);
 
+  const color = garmentDetails?.color;
+  const garmentType = garmentDetails?.garmentType;
+  const cut = garmentDetails?.cut;
+  const occasion = garmentDetails?.occasion;
+
   useEffect(() => {
     if (!searchQuery) return;
 
@@ -66,12 +85,10 @@ export default function ShoppingCarousel({
         let url = `/api/products?q=${encodeURIComponent(searchQuery)}${size ? `&size=${encodeURIComponent(size)}` : ''}`;
 
         // Dopnij parametry GarmentDetails jeśli są dostępne
-        if (garmentDetails) {
-          if (garmentDetails.color) url += `&color=${encodeURIComponent(garmentDetails.color)}`;
-          if (garmentDetails.garmentType) url += `&type=${encodeURIComponent(garmentDetails.garmentType)}`;
-          if (garmentDetails.cut) url += `&cut=${encodeURIComponent(garmentDetails.cut)}`;
-          if (garmentDetails.occasion) url += `&occasion=${encodeURIComponent(garmentDetails.occasion)}`;
-        }
+        if (color) url += `&color=${encodeURIComponent(color)}`;
+        if (garmentType) url += `&type=${encodeURIComponent(garmentType)}`;
+        if (cut) url += `&cut=${encodeURIComponent(cut)}`;
+        if (occasion) url += `&occasion=${encodeURIComponent(occasion)}`;
 
         const response = await fetch(url);
         const data = await response.json();
@@ -92,7 +109,7 @@ export default function ShoppingCarousel({
           else if (q.includes('okulary') || q.includes('torebk') || q.includes('czapk') || q.includes('szalik') || q.includes('pasek') || q.includes('biżuteria') || q.includes('naszyjnik') || q.includes('kolczyk') || q.includes('kapelusz') || q.includes('krawat') || q.includes('zegarek')) currentCategory = 'ACCESSORIES';
 
           // Inject Local Partners from JSON
-          const localPartners: Product[] = partnersData.filter((partner: any) => {
+          const localPartners: Product[] = partnersData.filter((partner: PartnerItem) => {
             // Check category match
             if (partner.categories && !partner.categories.includes(currentCategory)) return false;
 
@@ -133,7 +150,17 @@ export default function ShoppingCarousel({
     };
 
     fetchProducts();
-  }, [searchQuery, forbiddenKeywords]);
+  }, [
+    searchQuery,
+    forbiddenKeywords,
+    size,
+    sizeAlternative1,
+    sizeAlternative2,
+    color,
+    garmentType,
+    cut,
+    occasion
+  ]);
 
   const handleImageError = (productId: string) => {
     setProducts(prev => prev.filter(p => p.id !== productId));
@@ -284,7 +311,7 @@ export default function ShoppingCarousel({
 
           {products.length === 0 && (
             <div className="w-full text-center py-8 text-slate-500 italic">
-              Nie znaleziono produktów pasujących do "{searchQuery}".
+              Nie znaleziono produktów pasujących do &quot;{searchQuery}&quot;.
             </div>
           )}
         </div>

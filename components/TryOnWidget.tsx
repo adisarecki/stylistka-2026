@@ -48,9 +48,6 @@ const processImage = (file: File): Promise<string> => {
   });
 };
 
-// ZADANIE 4 (MODUŁ 4): Typy i sylwetki (do Promptowania z Gemini AI)
-type BodyShape = 'JABŁKO' | 'GRUSZKA' | 'KLEPSYDRA' | 'KOLUMNA' | 'ROŻEK' | 'NIEZNANA';
-
 interface AnalysisResult {
   uiTitle: string;
   apiQuery: string;
@@ -103,7 +100,7 @@ export default function TryOnWidget() {
     try {
       const provider = new GoogleAuthProvider();
       await signInWithPopup(auth, provider);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Auth OOPS:", err);
       setError("Nie udało się zalogować. Spróbuj ponownie.");
     }
@@ -167,10 +164,11 @@ export default function TryOnWidget() {
         bodyShape: data.bodyShape || 'NIEZNANA',
         garmentDetails: data.garmentDetails
       });
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Analysis Error:", err);
       setAnalysisResult(null);
-      setError(err.message || "Nie udało się przeanalizować sylwetki. Spróbuj ponownie.");
+      const msg = err instanceof Error ? err.message : "Nie udało się przeanalizować sylwetki. Spróbuj ponownie.";
+      setError(msg);
     } finally {
       setIsAnalyzing(false);
     }
@@ -202,7 +200,7 @@ export default function TryOnWidget() {
     const replicateCategory = analysisResult?.replicateCategory || 'upper_body';
     const replicatePrompt = analysisResult?.replicatePrompt || '';
 
-    const fetchTryOnWithRetry = async (retries = 5): Promise<any> => {
+    const fetchTryOnWithRetry = async (retries = 5): Promise<{ imageUrl: string; error?: string }> => {
       try {
         const response = await fetch('/api/try-on', {
           method: 'POST',
@@ -245,9 +243,10 @@ export default function TryOnWidget() {
       const cleanStringUrl = `${data.imageUrl}`;
       console.log("Czysty URL do wyrenderowania:", cleanStringUrl);
       setTryOnImage(cleanStringUrl);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Try-On Error:", err);
-      setError(err.message || "Nie udało się wygenerować przymiarki");
+      const msg = err instanceof Error ? err.message : "Nie udało się wygenerować przymiarki";
+      setError(msg);
     } finally {
       setIsTryOnLoading(false);
       setIsAppProcessing(false); // LOCK END
@@ -380,7 +379,7 @@ export default function TryOnWidget() {
                   </div>
                   <h3 className="text-xl font-bold text-white mb-2">Prywatność przede wszystkim</h3>
                   <p className="text-slate-400 max-w-sm mb-8 text-sm leading-relaxed">
-                    Aby zadbać o Twoje bezpieczeństwo, autoryzuj sesję. Twoje zdjęcia "w majtkach" trafią do zaszyfrowanej chmury, a po przymiarce ulegną auto-destrukcji.
+                    Aby zadbać o Twoje bezpieczeństwo, autoryzuj sesję. Twoje zdjęcia &quot;w majtkach&quot; trafią do zaszyfrowanej chmury, a po przymiarce ulegną auto-destrukcji.
                   </p>
 
                   <button

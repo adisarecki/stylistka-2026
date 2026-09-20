@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 
 interface LocationContextType {
   location: string;
@@ -22,7 +22,7 @@ export function LocationProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const autoLocate = async () => {
+  const autoLocate = useCallback(async () => {
     setIsLocating(true);
 
     const fallbackIP = async () => {
@@ -34,7 +34,7 @@ export function LocationProvider({ children }: { children: ReactNode }) {
         } else {
           setLocation('Będzin / Śląsk');
         }
-      } catch (e) {
+      } catch {
         setLocation('Będzin / Śląsk');
       } finally {
         setIsLocating(false);
@@ -52,13 +52,13 @@ export function LocationProvider({ children }: { children: ReactNode }) {
             } else {
               await fallbackIP();
             }
-          } catch (e) {
+          } catch {
             await fallbackIP();
           } finally {
             setIsLocating(false);
           }
         },
-        async (error) => {
+        async () => {
           await fallbackIP();
         },
         { timeout: 7000 }
@@ -66,7 +66,7 @@ export function LocationProvider({ children }: { children: ReactNode }) {
     } else {
       await fallbackIP();
     }
-  };
+  }, []);
 
   useEffect(() => {
     const stored = localStorage.getItem('userLocation');
@@ -76,7 +76,7 @@ export function LocationProvider({ children }: { children: ReactNode }) {
       return;
     }
     autoLocate();
-  }, []);
+  }, [autoLocate]);
 
   return (
     <LocationContext.Provider value={{ location, setLocation, autoLocate, isLocating }}>

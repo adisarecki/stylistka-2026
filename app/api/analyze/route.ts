@@ -103,7 +103,7 @@ export async function POST(req: Request) {
       });
     }
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Gemini error:", error);
     return NextResponse.json(
       { error: "AI temporarily unavailable" },

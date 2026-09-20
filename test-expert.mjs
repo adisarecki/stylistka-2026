@@ -1,12 +1,12 @@
-const fs = require('fs');
-const http = require('http');
-const path = require('path');
+import fs from 'node:fs';
+import http from 'node:http';
+import path from 'node:path';
 
 const brainDir = 'C:\\Users\\adisa\\.gemini\\antigravity\\brain\\85fc8a50-d656-43bc-bbea-ab3726a0119e';
 const appleImageFile = path.join(brainDir, 'plus_size_model_analysis_1771787398679.png');
-const slimImageFile = path.join(brainDir, 'slim_model_analysis_1771787386215.png');
 
 async function analyzeImage(filePath, label) {
+    console.log(`\n--- Analiza dla: ${label} ---`);
     const imageBuffer = fs.readFileSync(filePath);
     const base64Image = `data:image/png;base64,${imageBuffer.toString('base64')}`;
 
@@ -34,8 +34,11 @@ async function analyzeImage(filePath, label) {
             res.on('end', () => {
                 try {
                     const json = JSON.parse(resData);
+                    console.log("FigureType:", json.figureType);
+                    console.log("Enhanced apiQuery:", json.apiQuery);
                     resolve(json);
                 } catch (e) {
+                    console.log("Error Parsing:", resData);
                     reject(e);
                 }
             });
@@ -47,21 +50,4 @@ async function analyzeImage(filePath, label) {
     });
 }
 
-async function runTest() {
-    try {
-        const appleResult = await analyzeImage(appleImageFile, "APPLE");
-        const slimResult = await analyzeImage(slimImageFile, "SLIM");
-
-        const results = {
-            apple: appleResult,
-            slim: slimResult
-        };
-
-        fs.writeFileSync('test-results.json', JSON.stringify(results, null, 2));
-        console.log("Test results saved to test-results.json");
-    } catch (err) {
-        console.error("Test failed:", err);
-    }
-}
-
-runTest();
+analyzeImage(appleImageFile, "APPLE / JABŁKO TEST");

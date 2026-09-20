@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { db, storage } from "@/lib/firebase";
 import { doc, getDoc, setDoc, deleteDoc } from "firebase/firestore";
-import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
+import { ref, uploadBytes, getDownloadURL, deleteObject, StorageReference } from "firebase/storage";
 
 
 
@@ -14,13 +14,50 @@ const replicate = new Replicate({
 // Wersja IDM-VTON (stabilna, marzec 2026)
 const IDM_VTON_MODEL = "cuuupid/idm-vton:0513734a452173b8173e907e3a59d19a36266e55b48528559432bd21c7d7e985";
 
+function extractErrorStatus(err: unknown): number | undefined {
+  if (typeof err !== 'object' || err === null) {
+    return undefined;
+  }
+
+  const record = err as Record<string, unknown>;
+
+  if (typeof record.status === 'number') {
+    return record.status;
+  }
+
+  if (typeof record.response === 'object' && record.response !== null) {
+    const responseRecord = record.response as Record<string, unknown>;
+    if (typeof responseRecord.status === 'number') {
+      return responseRecord.status;
+    }
+  }
+
+  return undefined;
+}
+
+function isRateLimitError(err: unknown): boolean {
+  const status = extractErrorStatus(err);
+  if (status === 429) {
+    return true;
+  }
+
+  if (typeof err === 'object' && err !== null) {
+    const record = err as Record<string, unknown>;
+    if (typeof record.message === 'string' && record.message.includes('429')) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 export async function POST(req: Request) {
-  let proxyStorageRef: any = null;
-  let userImageStorageRef: any = null;
+  let proxyStorageRef: StorageReference | null = null;
+  let userImageStorageRef: StorageReference | null = null;
   let globalUid: string = '';
 
   try {
-    const { uid, personImage, clothingImage, category, productTitle, bodyTypeModifier, replicatePrompt } = await req.json();
+    const { uid, personImage, clothingImage, category, productTitle, replicatePrompt } = await req.json();
 
     if (!uid) {
       return NextResponse.json({ error: "Brak autoryzacji sesji. Zaloguj się by dokonać przymiarki." }, { status: 401 });
@@ -43,8 +80,9 @@ export async function POST(req: Request) {
       human_img = await getDownloadURL(userImageStorageRef);
 
       console.log(`[TRY-ON] human_img zabezpieczony w Storage: ${human_img}`);
-    } catch (privacyErr: any) {
-      console.error('[TRY-ON] BŁĄD Privacy Guard:', privacyErr.message);
+    } catch (privacyErr: unknown) {
+      const msg = privacyErr instanceof Error ? privacyErr.message : String(privacyErr);
+      console.error('[TRY-ON] BŁĄD Privacy Guard:', msg);
       throw new Error("Nie udało się zabezpieczyć zdjęcia użytkownika. Spróbuj ponownie.");
     }
 
@@ -73,8 +111,9 @@ export async function POST(req: Request) {
         } else {
           console.warn(`[TRY-ON] Proxy fetch zwrócił ${proxyRes.status} – używam oryginalnego URL jako fallback.`);
         }
-      } catch (proxyErr: any) {
-        console.warn('[TRY-ON] Image Proxy error – używam oryginalnego URL:', proxyErr.message);
+      } catch (proxyErr: unknown) {
+        const msg = proxyErr instanceof Error ? proxyErr.message : String(proxyErr);
+        console.warn('[TRY-ON] Image Proxy error – używam oryginalnego URL:', msg);
       }
     }
 
@@ -92,8 +131,9 @@ export async function POST(req: Request) {
         console.log('[TRY-ON] HIT CACHE – zwracam wynik z Firestore bez Replicate!');
         return NextResponse.json({ imageUrl: cacheDoc.data()?.imageUrl, cached: true });
       }
-    } catch (cacheReadErr: any) {
-      console.warn('[TRY-ON] Cache read error (ignoruję):', cacheReadErr.message);
+    } catch (cacheReadErr: unknown) {
+      const msg = cacheReadErr instanceof Error ? cacheReadErr.message : String(cacheReadErr);
+      console.warn('[TRY-ON] Cache read error (ignoruję):', msg);
     }
 
     // === KROK 4: PER-USER MUTEX – Blokada w Firestore ===
@@ -168,8 +208,9 @@ export async function POST(req: Request) {
         timestamp: Date.now()
       });
       console.log(`[TRY-ON] Wynik zapisany w try_on_results/${cacheHash}`);
-    } catch (cacheWriteErr: any) {
-      console.warn('[TRY-ON] Cache write warning:', cacheWriteErr.message);
+    } catch (cacheWriteErr: unknown) {
+      const msg = cacheWriteErr instanceof Error ? cacheWriteErr.message : String(cacheWriteErr);
+      console.warn('[TRY-ON] Cache write warning:', msg);
     }
 
     // === KROK 7: CLEANUP – Mutex + Storage ===
@@ -184,16 +225,17 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ imageUrl: resultUri });
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     // Obsługa Rate Limit (429)
-    if (error?.response?.status === 429 || error?.status === 429 || error?.message?.includes('429')) {
+    if (isRateLimitError(error)) {
       console.warn('[TRY-ON] RATE LIMIT 429 – Replicate przeciążony.');
       if (proxyStorageRef) deleteObject(proxyStorageRef).catch(() => { });
       if (userImageStorageRef) deleteObject(userImageStorageRef).catch(() => { });
       return NextResponse.json({ error: "RATE_LIMIT", retryAfter: 12 }, { status: 429 });
     }
 
-    console.error('[TRY-ON] BŁĄD:', error.message);
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    console.error('[TRY-ON] BŁĄD:', errorMsg);
 
     // Cleanup Mutex w przypadku błędu
     if (globalUid) {
@@ -202,6 +244,6 @@ export async function POST(req: Request) {
     if (proxyStorageRef) deleteObject(proxyStorageRef).catch(() => { });
     if (userImageStorageRef) deleteObject(userImageStorageRef).catch(() => { });
 
-    return NextResponse.json({ error: error.message || "Błąd serwera" }, { status: 500 });
+    return NextResponse.json({ error: errorMsg || "Błąd serwera" }, { status: 500 });
   }
 }

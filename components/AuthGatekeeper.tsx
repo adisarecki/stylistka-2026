@@ -16,32 +16,68 @@ interface AuthGatekeeperProps {
  * ŻADEN komponent dziecka (TryOnWidget, karuzela, etc.) NIE zostaje zamontowany w DOM.
  * To gwarantuje zerowe requesty do API przed autoryzacją.
  */
+interface ParsedAuthError {
+    code: string;
+    message: string;
+}
+
+function parseAuthError(err: unknown): ParsedAuthError {
+    let code = 'unknown';
+    let message = 'Wystąpił nieoczekiwany błąd logowania.';
+
+    if (typeof err === 'object' && err !== null) {
+        const record = err as Record<string, unknown>;
+        if (typeof record.code === 'string') {
+            code = record.code;
+        }
+        if (typeof record.message === 'string') {
+            message = record.message;
+        }
+    } else if (typeof err === 'string') {
+        message = err;
+    } else if (err !== undefined && err !== null) {
+        message = String(err);
+    }
+
+    return { code, message };
+}
+
 export default function AuthGatekeeper({ children }: AuthGatekeeperProps) {
+    const isAuthAvailable = Boolean(auth && 'currentUser' in auth);
     const [user, setUser] = useState<User | null>(null);
-    const [isLoading, setIsLoading] = useState(true);
+    const [isLoading, setIsLoading] = useState(isAuthAvailable);
     const [isSigningIn, setIsSigningIn] = useState(false);
-    const [error, setError] = useState<string | null>(null);
+    const [error, setError] = useState<string | null>(
+        isAuthAvailable ? null : 'Błąd inicjalizacji Firebase: brak instancji auth'
+    );
     const [firebaseReady, setFirebaseReady] = useState(false);
 
     useEffect(() => {
         console.log('[AuthGatekeeper] Montowanie komponentu...');
         console.log('[AuthGatekeeper] Firebase auth object:', auth ? 'EXISTS' : 'NULL');
 
-        try {
-            const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+        if (!auth || !('currentUser' in auth)) {
+            return;
+        }
+
+        const unsubscribe = onAuthStateChanged(
+            auth,
+            (currentUser) => {
                 console.log('[AuthGatekeeper] onAuthStateChanged:', currentUser ? currentUser.email : 'BRAK USERA');
                 setUser(currentUser);
                 setIsLoading(false);
                 setIsSigningIn(false);
                 setFirebaseReady(true);
-            });
-            return () => unsubscribe();
-        } catch (err: any) {
-            console.error('[AuthGatekeeper] Firebase init error:', err);
-            setIsLoading(false);
-            setFirebaseReady(false);
-            setError('Błąd inicjalizacji Firebase: ' + err.message);
-        }
+            },
+            (subscriptionError) => {
+                console.error('[AuthGatekeeper] Firebase auth subscription error:', subscriptionError);
+                setIsLoading(false);
+                setFirebaseReady(false);
+                setError('Błąd autoryzacji Firebase: ' + subscriptionError.message);
+            }
+        );
+
+        return () => unsubscribe();
     }, []);
 
     const handleGoogleLogin = async () => {
@@ -53,16 +89,17 @@ export default function AuthGatekeeper({ children }: AuthGatekeeperProps) {
             console.log('[AuthGatekeeper] Wywołuję signInWithPopup...');
             const result = await signInWithPopup(auth, provider);
             console.log('[AuthGatekeeper] Zalogowano pomyślnie:', result.user.email);
-        } catch (err: any) {
-            console.error('[AuthGatekeeper] Login error:', err.code, err.message);
-            if (err.code === 'auth/popup-closed-by-user') {
+        } catch (err: unknown) {
+            const { code, message } = parseAuthError(err);
+            console.error('[AuthGatekeeper] Login error:', code, message);
+            if (code === 'auth/popup-closed-by-user') {
                 setError('Zamknięto okno logowania. Spróbuj ponownie.');
-            } else if (err.code === 'auth/unauthorized-domain') {
+            } else if (code === 'auth/unauthorized-domain') {
                 setError('Domena nie jest autoryzowana w Firebase Console. Dodaj ją do Authorized Domains w Authentication → Settings.');
-            } else if (err.code === 'auth/popup-blocked') {
+            } else if (code === 'auth/popup-blocked') {
                 setError('Przeglądarka zablokowała okno popup. Odblokuj popupy dla tej strony.');
             } else {
-                setError(`Błąd logowania (${err.code || 'unknown'}): ${err.message}`);
+                setError(`Błąd logowania (${code}): ${message}`);
             }
             setIsSigningIn(false);
         }

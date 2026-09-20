@@ -45,7 +45,7 @@ export default function ResultViewer({ image, status, error }: ResultViewerProps
       {status === 'idle' && (
         <div className="text-center text-gray-400">
           <p className="text-lg">Tutaj pojawi się wynik</p>
-          <p className="text-sm">Wgraj zdjęcia i kliknij "PRZYMIERZ (AI)"</p>
+          <p className="text-sm">Wgraj zdjęcia i kliknij &quot;PRZYMIERZ (AI)&quot;</p>
         </div>
       )}
       

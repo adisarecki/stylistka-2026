@@ -25,7 +25,7 @@ export default function AuthHeader() {
         try {
             const provider = new GoogleAuthProvider();
             await signInWithPopup(auth, provider);
-        } catch (err: any) {
+        } catch (err: unknown) {
             console.error('Auth error:', err);
             setError('Nie udało się zalogować. Spróbuj ponownie.');
             setIsSigningIn(false);
