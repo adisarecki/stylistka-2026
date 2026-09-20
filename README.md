@@ -116,11 +116,20 @@ Każda zmiana wypchnięta do głównej gałęzi repozytorium (`git push origin m
 ### Konfiguracja Środowiska (Klucze API)
 Przed pierwszą aktualizacją produkcyjną lub w przypadku zmiany kluczy, należy upewnić się, że w panelu Vercel (**Settings -> Environment Variables**) skonfigurowane są następujące zmienne:
 
+#### Zmienne Serwerowe (Server-Only — Backend & AI)
 | Klucz Środowiskowy                           | Opis                                           |
 |-----------------------------------------------|-------------------------------------------------|
+| `GOOGLE_API_KEY`                              | Klucz AI (Google Gemini 2.5 Flash w `/api/analyze`) |
 | `REPLICATE_API_TOKEN`                         | Token do obsługi modeli Replicate (VTON)       |
 | `SERPER_API_KEY`                              | Klucz do silnika wyszukiwania Serper.dev       |
-| `GEMINI_API_KEY`                              | Klucz AI (Gemini / Google AI Studio)           |
+| `FIREBASE_ADMIN_PROJECT_ID`                   | Identyfikator projektu Firebase (Admin SDK)    |
+| `FIREBASE_ADMIN_CLIENT_EMAIL`                  | E-mail konta usługi Firebase Service Account   |
+| `FIREBASE_ADMIN_PRIVATE_KEY`                  | Klucz prywatny PEM (escaped newlines jako `\n`)|
+| `FIREBASE_STORAGE_BUCKET`                     | Nazwa docelowego bucketa Firebase Storage      |
+
+#### Zmienne Klienckie (Public Web Config — Opcjonalne)
+| Klucz Środowiskowy                           | Opis                                           |
+|-----------------------------------------------|-------------------------------------------------|
 | `NEXT_PUBLIC_FIREBASE_API_KEY`                | Klucz API Firebase (Web)                       |
 | `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN`            | Domena autoryzacji Firebase Auth               |
 | `NEXT_PUBLIC_FIREBASE_PROJECT_ID`             | ID projektu Firebase                           |
@@ -130,10 +139,10 @@ Przed pierwszą aktualizacją produkcyjną lub w przypadku zmiany kluczy, należ
 | `NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID`         | ID Google Analytics (opcjonalny)               |
 
 > [!CAUTION]
-> **Formatowanie kluczy:** Wartości zmiennych w panelu Vercel **NIE mogą** zawierać cudzysłowów (`"`), spacji ani przecinków. Wklejaj surowe wartości, np. `AIzaSyD64hk...` a **nie** `"AIzaSyD64hk..."`. Złe formatowanie powoduje `auth/invalid-api-key`.
+> **Formatowanie kluczy:** Wartości zmiennych w panelu Vercel **NIE mogą** zawierać zbędnych cudzysłowów (`"`), spacji ani przecinków. W przypadku `FIREBASE_ADMIN_PRIVATE_KEY` upewnij się, że znaki nowej linii są zapisane jako `\n` (escaped newlines).
 
 > [!IMPORTANT]
-> Plik `.env.local` jest automatycznie ignorowany przez Git (`.gitignore`). Klucze produkcyjne muszą zostać wprowadzone ręcznie w panelu Vercel, aby systemy AI i wyszukiwarka mogły poprawnie funkcjonować po wdrożeniu.
+> Plik `.env.local` jest automatycznie ignorowany przez Git (`.gitignore`). Klucze produkcyjne muszą zostać wprowadzone ręcznie w panelu Vercel, aby systemy AI i autoryzacja mogły poprawnie funkcjonować po wdrożeniu. Nigdy nie commituj sekretów do repozytorium.
 
 ### Kroki Wdrożeniowe:
 1. Skonfiguruj zmienne środowiskowe w istniejącym projekcie `stylistka-2026` na Vercel.
