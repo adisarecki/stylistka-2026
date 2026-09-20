@@ -139,10 +139,12 @@ Przed pierwszą aktualizacją produkcyjną lub w przypadku zmiany kluczy, należ
 | `NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID`         | ID Google Analytics (opcjonalny)               |
 
 > [!CAUTION]
-> **Formatowanie kluczy:** Wartości zmiennych w panelu Vercel **NIE mogą** zawierać zbędnych cudzysłowów (`"`), spacji ani przecinków. W przypadku `FIREBASE_ADMIN_PRIVATE_KEY` upewnij się, że znaki nowej linii są zapisane jako `\n` (escaped newlines).
-
-> [!IMPORTANT]
-> Plik `.env.local` jest automatycznie ignorowany przez Git (`.gitignore`). Klucze produkcyjne muszą zostać wprowadzone ręcznie w panelu Vercel, aby systemy AI i autoryzacja mogły poprawnie funkcjonować po wdrożeniu. Nigdy nie commituj sekretów do repozytorium.
+> **Zasady Bezpieczeństwa i Formatowania Środowiska:**
+> - Zmienne `FIREBASE_ADMIN_*` są poufnymi sekretami serwerowymi (Server-Only) — nigdy nie wolno dodawać do nich prefiksu `NEXT_PUBLIC_`.
+> - Zmienne `NEXT_PUBLIC_FIREBASE_*` stanowią wyłącznie publiczną konfigurację klienta Web SDK w przeglądarce i nie są credentialami administracyjnymi Admin SDK.
+> - Wartości zmiennych w panelu Vercel **NIE mogą** zawierać zbędnych cudzysłowów (`"`), spacji ani przecinków. W przypadku `FIREBASE_ADMIN_PRIVATE_KEY` upewnij się, że znaki nowej linii są zapisane jako `\n` (escaped newlines).
+> - Plik `.env.local` jest automatycznie ignorowany przez Git (`.gitignore`) i nie jest commitowany do repozytorium.
+> - Żadnej rzeczywistej wartości sekretu nie należy wklejać do pliku `README.md` ani commitować do systemu kontroli wersji.
 
 ### Kroki Wdrożeniowe:
 1. Skonfiguruj zmienne środowiskowe w istniejącym projekcie `stylistka-2026` na Vercel.
