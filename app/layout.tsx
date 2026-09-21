@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import { LocationProvider } from "@/components/LocationContext";
+import { MarketProvider } from "@/components/MarketContext";
 
 const serperKey = process.env.SERPER_API_KEY;
 if (!serperKey) console.warn("BRAK KLUCZA: SERPER_API_KEY w .env.local");
@@ -32,9 +32,9 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <LocationProvider>
+        <MarketProvider>
           {children}
-        </LocationProvider>
+        </MarketProvider>
       </body>
     </html>
   );

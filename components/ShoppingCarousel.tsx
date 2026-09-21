@@ -4,6 +4,7 @@ import { ShoppingBag, Tag, ExternalLink, Shirt, Loader2, Sparkles } from 'lucide
 import { useState, useEffect } from 'react';
 import { authenticatedFetch, AuthenticationRequiredError } from '@/lib/auth-fetch';
 import { CanonicalProduct, hasVerifiedTryOnAsset } from '@/types/product';
+import { useMarket } from './MarketContext';
 
 export default function ShoppingCarousel({
   searchQuery,
@@ -39,6 +40,7 @@ export default function ShoppingCarousel({
   isLoggedIn?: boolean;
   onLoginRequest?: () => void;
 }) {
+  const { market } = useMarket();
   const [products, setProducts] = useState<CanonicalProduct[]>([]);
   const [loading, setLoading] = useState(false);
   const [isAlternative, setIsAlternative] = useState(false);
@@ -55,7 +57,7 @@ export default function ShoppingCarousel({
       setLoading(true);
       setIsAlternative(false);
       try {
-        let url = `/api/products?q=${encodeURIComponent(searchQuery)}${size ? `&size=${encodeURIComponent(size)}` : ''}`;
+        let url = `/api/products?q=${encodeURIComponent(searchQuery)}&market=${encodeURIComponent(market.marketCode)}${size ? `&size=${encodeURIComponent(size)}` : ''}`;
 
         if (color) url += `&color=${encodeURIComponent(color)}`;
         if (garmentType) url += `&type=${encodeURIComponent(garmentType)}`;
@@ -105,7 +107,8 @@ export default function ShoppingCarousel({
     color,
     garmentType,
     cut,
-    occasion
+    occasion,
+    market.marketCode
   ]);
 
   const handleImageError = (productId: string) => {

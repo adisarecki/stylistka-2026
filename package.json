@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "test:security": "tsx test-security.ts",
-    "test:products": "tsx test-product-model.ts"
+    "test:products": "tsx test-product-model.ts",
+    "test:market": "tsx test-market.ts"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",

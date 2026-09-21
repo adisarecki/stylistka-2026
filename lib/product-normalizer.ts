@@ -59,7 +59,8 @@ function extractDomainAndName(urlString: string, fallbackSource?: string): { dom
  */
 export function normalizeSerperImages(
   rawImages: SerperRawImageItem[] | undefined | null,
-  maxResults = 20
+  maxResults = 20,
+  marketCountry: string | null = null
 ): CanonicalProduct[] {
   if (!Array.isArray(rawImages)) {
     return [];
@@ -107,7 +108,7 @@ export function normalizeSerperImages(
       availability: 'unknown',
       availableSizes: [],
       deliveryCountries: [],
-      marketCountry: null,
+      marketCountry,
       affiliate: false,
       updatedAt: null,
     });

@@ -1,6 +1,13 @@
 import { NextResponse } from 'next/server';
 import { requireAuthenticatedUser } from '@/lib/auth-server';
 import { normalizeSerperImages } from '@/lib/product-normalizer';
+import {
+  DEFAULT_MARKET_CODE,
+  getMarketProfile,
+  getMarketSearchDomains,
+  isSupportedMarketCode,
+  buildMarketSiteFilter,
+} from '@/lib/market-config';
 
 export async function GET(req: Request) {
   const authResult = await requireAuthenticatedUser(req);
@@ -28,6 +35,45 @@ export async function GET(req: Request) {
   const cut = searchParams.get('cut');
   const occasion = searchParams.get('occasion');
 
+  // Walidacja i normalizacja parametru rynku
+  const rawMarket = searchParams.get('market');
+  let marketCode = DEFAULT_MARKET_CODE;
+
+  if (rawMarket !== null) {
+    const normalized = rawMarket.trim().toUpperCase();
+    if (!isSupportedMarketCode(normalized)) {
+      return NextResponse.json(
+        {
+          error: 'UNSUPPORTED_MARKET',
+          message: `Rynek "${rawMarket}" nie jest obecnie obsługiwany.`,
+        },
+        {
+          status: 400,
+          headers: {
+            'Cache-Control': 'no-store',
+          },
+        }
+      );
+    }
+    marketCode = normalized;
+  }
+
+  const marketProfile = getMarketProfile(marketCode);
+  if (!marketProfile) {
+    return NextResponse.json(
+      {
+        error: 'UNSUPPORTED_MARKET',
+        message: 'Nieprawidłowa konfiguracja rynku.',
+      },
+      {
+        status: 400,
+        headers: {
+          'Cache-Control': 'no-store',
+        },
+      }
+    );
+  }
+
   let query = q || '';
 
   // DYNAMICZNE DODANIE ROZMIARU DO ZAPYTANIA (Twardy Filtr)
@@ -53,21 +99,26 @@ export async function GET(req: Request) {
     console.log('--- DIAGNOSTYKA WYSZUKIWARKI (SERPER) ---');
     console.log('KROK 1: Próba z twardym filtrem rozmiaru:', query);
 
-    const callSerper = async (searchQuery: string, useModifiers: boolean = true) => {
-      // Wstrzyknięcie Whitelisty i wykluczeń (Retail-Only Filter dla VTON)
-      let finalQuery = searchQuery;
-
-      if (useModifiers) {
-        if (color && type) {
-          // Parametryczne zapytanie z Gemini (Silnik Zapytań)
-          const cutPart = cut ? ` +${cut}` : '';
-          const baseQuery = `+${color} +${type}${cutPart}`;
-          finalQuery = `${baseQuery} +packshot +"białe tło" site:zalando.pl OR site:modivo.pl OR site:answear.com OR site:hm.com -portfolio -fotograf -usługi -sesja -buty -torebka -szpilki -modelka -editorial`;
-        } else {
-          // Standardowy Fallback dla starszych wyszukiwań bez meta-danych ubrań
-          finalQuery = `"${searchQuery}" +packshot +"białe tło" (site:zalando.pl OR site:answear.com OR site:modivo.pl OR site:hm.com) -portfolio -fotograf -sesja -fotografia -usługi -modelka`;
+    const searchDomains = getMarketSearchDomains(marketCode);
+    if (!searchDomains || searchDomains.length === 0) {
+      return NextResponse.json(
+        {
+          error: 'UNSUPPORTED_MARKET',
+          message: `Brak skonfigurowanych domen dla rynku "${marketCode}".`,
+        },
+        {
+          status: 400,
+          headers: {
+            'Cache-Control': 'no-store',
+          },
         }
-      }
+      );
+    }
+    const siteFilter = buildMarketSiteFilter(searchDomains);
+
+    const callSerper = async (searchQuery: string) => {
+      // Każde zapytanie Serper bezwzględnie musi zawierać filtr domen rynku
+      const finalQuery = `${searchQuery} ${siteFilter}`;
 
       console.log('-> Serper Request Q:', finalQuery);
 
@@ -77,8 +128,14 @@ export async function GET(req: Request) {
           'X-API-KEY': serperApiKey,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ q: finalQuery, num: 10 })
+        body: JSON.stringify({
+          q: finalQuery,
+          num: 10,
+          gl: marketProfile.serperGl,
+          hl: marketProfile.serperHl,
+        })
       });
+
       if (!resp.ok) {
         const errData = await resp.json();
         throw new Error(`Serper API Error: ${resp.status} - ${JSON.stringify(errData)}`);
@@ -89,36 +146,60 @@ export async function GET(req: Request) {
     let data;
     let isAlternative = false;
 
-    // Próba uderzenia z twardym rozmiarem i packshotem (KROK 1)
+    // Próba 1: Pełne parametryczne zapytanie z wymuszeniem packshotu i rozmiarem (jeśli dostępny)
     try {
-      data = await callSerper(query, true);
+      let q1: string;
+      if (color && type) {
+        const cutPart = cut ? ` +${cut}` : '';
+        const sizePart = size ? ` +intext:"${size}"` : '';
+        q1 = `+${color} +${type}${cutPart}${sizePart} +packshot +"białe tło" -portfolio -fotograf -usługi -sesja -buty -torebka -szpilki -modelka -editorial`;
+      } else {
+        q1 = `"${query}" +packshot +"białe tło" -portfolio -fotograf -sesja -fotografia -usługi -modelka`;
+      }
+
+      data = await callSerper(q1);
 
       if (!data.images || data.images.length === 0) {
-        throw new Error("Pusta lista wyników z filtrem rozmiaru i packshotem");
+        throw new Error("Pusta lista wyników (Próba 1)");
       }
     } catch {
-      // KROK 2: Fallback bez rozmiaru, ale z packshotem
-      console.log('⚠️ BRAK WYNIKÓW (KROK 1). Szukam bez rozmiaru, z wymuszeniem packshotu...');
+      // Próba 2: Poluzowane zapytanie (bez rozmiaru, ale z packshotem i siteFilter)
+      console.log('⚠️ BRAK WYNIKÓW (Próba 1). Szukam bez rozmiaru, z wymuszeniem packshotu...');
       try {
-        data = await callSerper(q || '', true);
+        let q2: string;
+        if (color && type) {
+          const cutPart = cut ? ` +${cut}` : '';
+          q2 = `+${color} +${type}${cutPart} +packshot +"białe tło" -portfolio -fotograf -usługi -sesja -buty -torebka -szpilki -modelka -editorial`;
+        } else {
+          q2 = `"${q || ''}" +packshot +"białe tło" -portfolio -fotograf -sesja -fotografia -usługi -modelka`;
+        }
+
+        data = await callSerper(q2);
         isAlternative = true;
         if (!data.images || data.images.length === 0) {
-          throw new Error("Pusta lista wyników z samym packshotem");
+          throw new Error("Pusta lista wyników (Próba 2)");
         }
       } catch {
-        // KROK 3: Hard Fallback - całkowicie surowe zapytanie
-        console.log('⚠️ BRAK WYNIKÓW (KROK 2). Uruchamiam Hard Fallback (czyste zapytanie)...');
-        data = await callSerper(q || '', false);
-        isAlternative = true;
+        // Próba 3: Ostatnia próba rynkowa - czyste query użytkownika z zachowaniem siteFilter rynku
+        console.log('⚠️ BRAK WYNIKÓW (Próba 2). Uruchamiam ostatnią próbę w ramach domen rynku...');
+        try {
+          const rawBase = q || query || '';
+          data = await callSerper(`"${rawBase}"`);
+          isAlternative = true;
+          if (!data.images || data.images.length === 0) {
+            data = { images: [] };
+          }
+        } catch {
+          data = { images: [] };
+        }
       }
     }
 
-    // Mapowanie wyników Serper na format CanonicalProduct (jako inspiracja)
-    const products = normalizeSerperImages(data?.images, 12);
+    // Mapowanie wyników Serper na format CanonicalProduct (jako inspiracja dla danego rynku)
+    const products = normalizeSerperImages(data?.images, 12, marketProfile.marketCode);
 
     console.log(`✅ FINISZER (SERPER): Znaleziono ${products.length} produktów. Alternatywne: ${isAlternative}`);
 
-    // Generowanie ostatecznego JSON-a wraz z meta-danymi na cele parametryczne
     return NextResponse.json({
       products,
       isAlternative,
@@ -129,7 +210,6 @@ export async function GET(req: Request) {
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : "Błąd serwera wyszukiwarki";
     console.error("🔥 SERPER KRYTYCZNY BŁĄD:", msg);
-    // Jeśli nawet fallback zawiedzie
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
