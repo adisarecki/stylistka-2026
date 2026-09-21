@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireAuthenticatedUser } from '@/lib/auth-server';
+import { normalizeSerperImages } from '@/lib/product-normalizer';
 
 export async function GET(req: Request) {
   const authResult = await requireAuthenticatedUser(req);
@@ -88,13 +89,6 @@ export async function GET(req: Request) {
     let data;
     let isAlternative = false;
 
-interface SerperImageItem {
-  title?: string;
-  link: string;
-  imageUrl: string;
-  source?: string;
-}
-
     // Próba uderzenia z twardym rozmiarem i packshotem (KROK 1)
     try {
       data = await callSerper(query, true);
@@ -119,25 +113,8 @@ interface SerperImageItem {
       }
     }
 
-    // Mapowanie wyników Serper na format karuzeli
-    const products = data.images?.map((item: SerperImageItem, index: number) => {
-      let storeName = 'Sklep';
-      try {
-        const url = new URL(item.link);
-        storeName = url.hostname.replace('www.', '');
-      } catch {
-        storeName = item.source || 'Sklep';
-      }
-
-      return {
-        id: `serper-${index}`,
-        name: item.title || 'Produkt',
-        price: 'Zobacz ofertę',
-        store: storeName,
-        imageUrl: item.imageUrl,
-        link: item.link
-      };
-    }) || [];
+    // Mapowanie wyników Serper na format CanonicalProduct (jako inspiracja)
+    const products = normalizeSerperImages(data?.images, 12);
 
     console.log(`✅ FINISZER (SERPER): Znaleziono ${products.length} produktów. Alternatywne: ${isAlternative}`);
 
