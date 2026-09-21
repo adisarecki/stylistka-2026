@@ -207,12 +207,16 @@ export default function TryOnWidget() {
     const replicateCategory = analysisResult?.replicateCategory || 'upper_body';
     const replicatePrompt = analysisResult?.replicatePrompt || '';
 
+    // Generujemy jedno, unikalne requestId dla nowej operacji przymiarki (RFC 4122 UUID v4)
+    const clientRequestId = crypto.randomUUID();
+
     const fetchTryOnWithRetry = async (retries = 5): Promise<{ imageUrl: string; error?: string }> => {
       try {
         const response = await authenticatedFetch('/api/try-on', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
+            requestId: clientRequestId,
             personImage: personBase64,
             clothingImage: selectedClothing,
             category: replicateCategory,          // Twardy kanał AI (Gemini)
@@ -224,8 +228,13 @@ export default function TryOnWidget() {
 
         const data = await response.json();
 
-        // ZADANIE 2: Smart Retry na Froncie - Maksymalnie 5 prób by zapobiec pętli
-        if (response.status === 429 || data.error === "RATE_LIMIT" || response.status === 409) {
+        // 402: Brak kredytów – bez ponawiania prób
+        if (response.status === 402 || data.error === 'CREDIT_REQUIRED') {
+          throw new Error(data.message || "Wykorzystano limit 3 bezpłatnych przymiarek VTON. Opcje zakupu dodatkowych kredytów będą dostępne wkrótce.");
+        }
+
+        // Smart Retry na Froncie - wyłącznie dla przeciążenia serwera (429 lub zajętego mutexu 409 przy mutexLocked)
+        if (response.status === 429 || data.error === "RATE_LIMIT" || (response.status === 409 && data.mutexLocked)) {
           if (retries > 0) {
             console.log(`Limit na serwerze API. Pozostało prób: ${retries - 1}. Czekam 12 sekund...`);
             await new Promise(r => setTimeout(r, 12000));
@@ -233,6 +242,10 @@ export default function TryOnWidget() {
           } else {
             throw new Error("Wirtualna stylistka jest w tej chwili mocno przeciążona przez inne przymiarki. Spróbuj ponownie za kilka minut.");
           }
+        }
+
+        if (response.status === 409 && data.error === "TRY_ON_IN_PROGRESS") {
+          throw new Error("Przymiarka dla tego żądania jest już w toku. Proszę zaczekać na ukończenie.");
         }
 
         if (!response.ok) throw new Error(data.message || data.error || "Błąd generowania przymiarki");
