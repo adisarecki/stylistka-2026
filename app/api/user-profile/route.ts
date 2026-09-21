@@ -1,20 +1,41 @@
 import { NextResponse } from 'next/server';
-import { db } from '@/lib/firebase';
-import { doc, setDoc } from 'firebase/firestore';
+import { requireAuthenticatedUser } from '@/lib/auth-server';
+import { getAdminFirestore } from '@/lib/firebase-admin';
 
 export async function POST(request: Request) {
-    try {
-        const { userId, zalandoSize, chestCm } = await request.json();
+    const authResult = await requireAuthenticatedUser(request);
+    if (!authResult.ok) {
+        return NextResponse.json(
+            {
+                error: authResult.code,
+                message: authResult.message,
+            },
+            {
+                status: authResult.status,
+                headers: {
+                    'Cache-Control': 'no-store',
+                },
+            }
+        );
+    }
 
-        if (!userId || (!zalandoSize && !chestCm)) {
-            return NextResponse.json({ error: 'Brak wymaganych danych do utworzenia profilu.' }, { status: 400 });
+    const { uid } = authResult.user;
+
+    try {
+        const body = await request.json();
+        const { zalandoSize, chestCm } = body;
+
+        if (!zalandoSize && !chestCm) {
+            return NextResponse.json(
+                { error: 'Brak wymaganych danych do utworzenia profilu.' },
+                { status: 400 }
+            );
         }
 
-        // ZADANIE 4: Zapisywanie Skali Zalando w Profilu Użytkownika Firestore
-        const userRef = doc(db, 'users', userId);
+        const adminDb = getAdminFirestore();
+        const userRef = adminDb.collection('users').doc(uid);
 
-        // Używamy set z parametrem merge, aby aktualizować tylko te pola bez nadpisywania całego dokumentu
-        await setDoc(userRef, {
+        await userRef.set({
             lastActive: new Date().toISOString(),
             ...(zalandoSize && { savedZalandoSize: zalandoSize }),
             ...(chestCm && { savedChestCm: chestCm }),

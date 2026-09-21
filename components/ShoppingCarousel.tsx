@@ -4,6 +4,7 @@ import { ShoppingBag, Tag, ExternalLink, Shirt, Loader2, MapPin, Map, Phone } fr
 import { useState, useEffect } from 'react';
 import { useLocation } from './LocationContext';
 import partnersData from '@/data/partners.json';
+import { authenticatedFetch, AuthenticationRequiredError } from '@/lib/auth-fetch';
 
 interface Product {
   id: string;
@@ -90,7 +91,11 @@ export default function ShoppingCarousel({
         if (cut) url += `&cut=${encodeURIComponent(cut)}`;
         if (occasion) url += `&occasion=${encodeURIComponent(occasion)}`;
 
-        const response = await fetch(url);
+        const response = await authenticatedFetch(url);
+        if (!response.ok) {
+          setProducts([]);
+          return;
+        }
         const data = await response.json();
 
         if (data.products) {
@@ -141,9 +146,17 @@ export default function ShoppingCarousel({
 
           setProducts(injectedProducts);
           setIsAlternative(!!data.isAlternative);
+        } else {
+          setProducts([]);
         }
       } catch (error) {
-        console.error("Failed to fetch products:", error);
+        if (error instanceof AuthenticationRequiredError) {
+          // Użytkownik niezalogowany - brak autoryzacji
+          setProducts([]);
+        } else {
+          console.error("Failed to fetch products:", error);
+          setProducts([]);
+        }
       } finally {
         setLoading(false);
       }

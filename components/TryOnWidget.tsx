@@ -6,6 +6,7 @@ import { auth } from '@/lib/firebase';
 import { signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut, User } from 'firebase/auth';
 import ImageUploader from './ImageUploader';
 import ShoppingCarousel from './ShoppingCarousel';
+import { authenticatedFetch, AuthenticationRequiredError } from '@/lib/auth-fetch';
 
 // Helper: Optymalizacja obrazu do formatu produkcyjnego
 const processImage = (file: File): Promise<string> => {
@@ -138,7 +139,7 @@ export default function TryOnWidget() {
     setError(null);
 
     try {
-      const response = await fetch('/api/analyze', {
+      const response = await authenticatedFetch('/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -151,7 +152,9 @@ export default function TryOnWidget() {
 
       const data = await response.json();
 
-      if (!response.ok) throw new Error(data.error || 'Analiza nie powiodła się');
+      if (!response.ok) {
+        throw new Error(data.message || data.error || 'Analiza nie powiodła się');
+      }
 
       // Bezpośrednie przypisanie pól z JSON (z fallbackami UI)
       setAnalysisResult({
@@ -167,8 +170,12 @@ export default function TryOnWidget() {
     } catch (err: unknown) {
       console.error("Analysis Error:", err);
       setAnalysisResult(null);
-      const msg = err instanceof Error ? err.message : "Nie udało się przeanalizować sylwetki. Spróbuj ponownie.";
-      setError(msg);
+      if (err instanceof AuthenticationRequiredError) {
+        setError("Wymagane zalogowanie. Zaloguj się, aby przeanalizować sylwetkę.");
+      } else {
+        const msg = err instanceof Error ? err.message : "Nie udało się przeanalizować sylwetki. Spróbuj ponownie.";
+        setError(msg);
+      }
     } finally {
       setIsAnalyzing(false);
     }
@@ -202,11 +209,10 @@ export default function TryOnWidget() {
 
     const fetchTryOnWithRetry = async (retries = 5): Promise<{ imageUrl: string; error?: string }> => {
       try {
-        const response = await fetch('/api/try-on', {
+        const response = await authenticatedFetch('/api/try-on', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            uid: user?.uid,
             personImage: personBase64,
             clothingImage: selectedClothing,
             category: replicateCategory,          // Twardy kanał AI (Gemini)
@@ -229,7 +235,7 @@ export default function TryOnWidget() {
           }
         }
 
-        if (!response.ok) throw new Error(data.error || "Błąd generowania przymiarki");
+        if (!response.ok) throw new Error(data.message || data.error || "Błąd generowania przymiarki");
         return data;
       } catch (error) {
         throw error;
@@ -245,8 +251,12 @@ export default function TryOnWidget() {
       setTryOnImage(cleanStringUrl);
     } catch (err: unknown) {
       console.error("Try-On Error:", err);
-      const msg = err instanceof Error ? err.message : "Nie udało się wygenerować przymiarki";
-      setError(msg);
+      if (err instanceof AuthenticationRequiredError) {
+        setError("Wymagane zalogowanie. Zaloguj się, aby skorzystać z przymiarki.");
+      } else {
+        const msg = err instanceof Error ? err.message : "Nie udało się wygenerować przymiarki";
+        setError(msg);
+      }
     } finally {
       setIsTryOnLoading(false);
       setIsAppProcessing(false); // LOCK END
@@ -316,10 +326,10 @@ export default function TryOnWidget() {
   useEffect(() => {
     if (mappedSize && user?.uid && !isAnalyzing) {
       const parsedChestCm = parseInt(chestCircumference, 10);
-      fetch('/api/user-profile', {
+      authenticatedFetch('/api/user-profile', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user.uid, zalandoSize: mappedSize, chestCm: isNaN(parsedChestCm) ? null : parsedChestCm })
+        body: JSON.stringify({ zalandoSize: mappedSize, chestCm: isNaN(parsedChestCm) ? null : parsedChestCm })
       }).catch(() => { });
     }
   }, [mappedSize, user?.uid, isAnalyzing, chestCircumference]);

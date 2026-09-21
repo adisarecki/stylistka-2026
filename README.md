@@ -102,7 +102,7 @@ Projekt zawiera dedykowane skrypty do weryfikacji jakości analiz AI oraz silnik
 - `compare-vision.mjs`: Automatyczne porównanie werdyktów AI dla różnych typów sylwetek (np. Apple vs Slim) na podstawie obrazów testowych. Wyniki są zapisywane do `test-results.json`.
 - `test-expert.mjs`: Skrypt do jednostkowego testowania logiki "Expert Stylist" dla konkretnych przypadków brzegowych.
 
-Uruchamianie testów: `node [nazwa-skryptu].mjs` (wymaga uruchomionego serwera lokalnego na porcie 3000).
+Uruchamianie testów: `node [nazwa-skryptu].mjs` (wymaga uruchomionego serwera lokalnego na porcie 3000 oraz ustawionej zmiennej środowiskowej `STYLISTKA_TEST_ID_TOKEN` z aktywnym tokenem Firebase ID zalogowanego użytkownika). OSTRZEŻENIE: Token jest krótkotrwały, służy wyłącznie do testów lokalnych i nigdy nie powinien być commitowany do repozytorium ani używany na produkcji.
 
 ## Wdrożenie Produkcyjne i CI/CD (Vercel)
 

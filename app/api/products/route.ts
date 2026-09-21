@@ -1,6 +1,23 @@
 import { NextResponse } from 'next/server';
+import { requireAuthenticatedUser } from '@/lib/auth-server';
 
 export async function GET(req: Request) {
+  const authResult = await requireAuthenticatedUser(req);
+  if (!authResult.ok) {
+    return NextResponse.json(
+      {
+        error: authResult.code,
+        message: authResult.message,
+      },
+      {
+        status: authResult.status,
+        headers: {
+          'Cache-Control': 'no-store',
+        },
+      }
+    );
+  }
+
   const { searchParams } = new URL(req.url);
   const q = searchParams.get('q');
   const size = searchParams.get('size');

@@ -1,9 +1,26 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { NextResponse } from "next/server";
+import { requireAuthenticatedUser } from "@/lib/auth-server";
 
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY || "");
 
 export async function POST(req: Request) {
+  const authResult = await requireAuthenticatedUser(req);
+  if (!authResult.ok) {
+    return NextResponse.json(
+      {
+        error: authResult.code,
+        message: authResult.message,
+      },
+      {
+        status: authResult.status,
+        headers: {
+          'Cache-Control': 'no-store',
+        },
+      }
+    );
+  }
+
   try {
     const { image, query, occasion, gender } = await req.json();
 

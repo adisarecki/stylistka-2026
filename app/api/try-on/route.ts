@@ -1,11 +1,12 @@
 import Replicate from "replicate";
 import { NextResponse } from "next/server";
 import crypto from "crypto";
-import { db, storage } from "@/lib/firebase";
-import { doc, getDoc, setDoc, deleteDoc } from "firebase/firestore";
-import { ref, uploadBytes, getDownloadURL, deleteObject, StorageReference } from "firebase/storage";
-
-
+import { requireAuthenticatedUser } from "@/lib/auth-server";
+import { getAdminFirestore, getAdminBucket } from "@/lib/firebase-admin";
+import { safeFetchExternalImage, SsrffValidationError } from "@/lib/ssrf-guard";
+import { computeTryOnCacheKey } from "@/lib/try-on-cache";
+import { acquireUserMutex, releaseUserMutex } from "@/lib/mutex-manager";
+import { validateImageBuffer } from "@/lib/image-validator";
 
 const replicate = new Replicate({
   auth: process.env.REPLICATE_API_TOKEN,
@@ -13,6 +14,19 @@ const replicate = new Replicate({
 
 // Wersja IDM-VTON (stabilna, marzec 2026)
 const IDM_VTON_MODEL = "cuuupid/idm-vton:0513734a452173b8173e907e3a59d19a36266e55b48528559432bd21c7d7e985";
+
+// Stałe parametry modelu dla powtarzalności i cache
+const MODEL_GUIDANCE_SCALE = 2.5;
+const MODEL_INFERENCE_STEPS = 30;
+const MODEL_SEED = 42;
+
+// Limity wejściowe (ETAP 6)
+const MAX_USER_IMAGE_BYTES = 10 * 1024 * 1024; // 10MB
+// Limit długości ciągu base64: 10MB bufora to ~13.7MB znaków base64 (plus nagłówek MIME)
+const MAX_BASE64_STRING_LENGTH = 15 * 1024 * 1024;
+const MAX_PRODUCT_TITLE_LENGTH = 300;
+const MAX_PROMPT_LENGTH = 1000;
+const ALLOWED_CATEGORIES = new Set(['upper_body', 'lower_body', 'dresses']);
 
 function extractErrorStatus(err: unknown): number | undefined {
   if (typeof err !== 'object' || err === null) {
@@ -52,198 +66,311 @@ function isRateLimitError(err: unknown): boolean {
 }
 
 export async function POST(req: Request) {
-  let proxyStorageRef: StorageReference | null = null;
-  let userImageStorageRef: StorageReference | null = null;
-  let globalUid: string = '';
+  // === KROK 0: AUTORYZACJA SERWEROWA ===
+  const authResult = await requireAuthenticatedUser(req);
+  if (!authResult.ok) {
+    return NextResponse.json(
+      {
+        error: authResult.code,
+        message: authResult.message,
+      },
+      {
+        status: authResult.status,
+        headers: {
+          'Cache-Control': 'no-store',
+        },
+      }
+    );
+  }
+
+  const verifiedUid = authResult.user.uid;
+  let userStoragePath: string | null = null;
+  let proxyStoragePath: string | null = null;
+  let currentSessionId: string | null = null;
+
+  const adminDb = getAdminFirestore();
+  const bucket = getAdminBucket();
 
   try {
-    const { uid, personImage, clothingImage, category, productTitle, replicatePrompt } = await req.json();
+    const body = await req.json();
+    const { personImage, clothingImage, category, productTitle, replicatePrompt } = body;
 
-    if (!uid) {
-      return NextResponse.json({ error: "Brak autoryzacji sesji. Zaloguj się by dokonać przymiarki." }, { status: 401 });
+    // === KROK 1: WALIDACJA LIMITÓW ORAZ MAGIC BYTES DLA personImage ===
+    if (!personImage || typeof personImage !== 'string') {
+      return NextResponse.json(
+        { error: 'Brak zdjęcia sylwetki użytkownika.' },
+        { status: 400 }
+      );
     }
 
-    globalUid = uid;
-
-    // === KROK 1: PRIVACY GUARD - Upload zdjęcia użytkownika do prywatnego folderu Firebase Storage ===
-    console.log('[TRY-ON] Krok 1: Privacy Guard – upload zdjęcia użytkownika...');
-    let human_img = '';
-    try {
-      const base64Data = (personImage as string).replace(/^data:image\/\w+;base64,/, "");
-      const userImageBuffer = Buffer.from(base64Data, 'base64');
-      const uint8UserArray = new Uint8Array(userImageBuffer);
-
-      const secureAvatarId = `base_user_${Date.now()}_${Math.random().toString(36).substring(7)}.jpg`;
-      userImageStorageRef = ref(storage, `users/${uid}/${secureAvatarId}`);
-
-      await uploadBytes(userImageStorageRef, uint8UserArray, { contentType: 'image/jpeg' });
-      human_img = await getDownloadURL(userImageStorageRef);
-
-      console.log(`[TRY-ON] human_img zabezpieczony w Storage: ${human_img}`);
-    } catch (privacyErr: unknown) {
-      const msg = privacyErr instanceof Error ? privacyErr.message : String(privacyErr);
-      console.error('[TRY-ON] BŁĄD Privacy Guard:', msg);
-      throw new Error("Nie udało się zabezpieczyć zdjęcia użytkownika. Spróbuj ponownie.");
+    // Sprawdzenie długości stringa przed dekodowaniem (ochrona przed pamięciożernym atakiem)
+    if (personImage.length > MAX_BASE64_STRING_LENGTH) {
+      return NextResponse.json(
+        { error: 'Ciąg Data URL zdjęcia przekracza dopuszczalny limit pamięci.' },
+        { status: 400 }
+      );
     }
 
-    // === KROK 2: IMAGE PROXY - Upload odzieży do Firebase Storage (Fix 403) ===
-    console.log('[TRY-ON] Krok 2: Image Proxy – upload odzieży do Storage...');
+    // Walidacja formatu Data URL i deklarowanego MIME
+    const dataUrlMatch = personImage.match(/^data:(image\/(jpeg|png|webp|avif));base64,/i);
+    if (!dataUrlMatch) {
+      return NextResponse.json(
+        { error: 'Zdjęcie użytkownika musi być w formacie JPEG, PNG, WebP lub AVIF (Data URL base64).' },
+        { status: 400 }
+      );
+    }
+
+    const declaredMime = dataUrlMatch[1];
+    const base64Data = personImage.substring(dataUrlMatch[0].length);
+    const userImageBuffer = Buffer.from(base64Data, 'base64');
+
+    // Weryfikacja Magic Bytes dla personImage
+    const userImageValidation = validateImageBuffer(userImageBuffer, MAX_USER_IMAGE_BYTES, declaredMime);
+    if (!userImageValidation.valid || !userImageValidation.format || !userImageValidation.extension) {
+      return NextResponse.json(
+        { error: userImageValidation.error || 'Uszkodzone lub nieobsługiwane zdjęcie użytkownika.' },
+        { status: 400 }
+      );
+    }
+
+    if (!clothingImage || typeof clothingImage !== 'string' || !clothingImage.trim()) {
+      return NextResponse.json(
+        { error: 'Brak wymaganego zdjęcia odzieży.' },
+        { status: 400 }
+      );
+    }
+
+    if (category && typeof category === 'string' && !ALLOWED_CATEGORIES.has(category.trim())) {
+      return NextResponse.json(
+        { error: 'Nieprawidłowa kategoria odzieży. Dozwolone: upper_body, lower_body, dresses.' },
+        { status: 400 }
+      );
+    }
+
+    const safeTitle = (typeof productTitle === 'string' ? productTitle.slice(0, MAX_PRODUCT_TITLE_LENGTH) : '').trim();
+    const safePrompt = (typeof replicatePrompt === 'string' ? replicatePrompt.slice(0, MAX_PROMPT_LENGTH) : '').trim();
+
+    // Obliczenie SHA-256 zdjęcia użytkownika dla klucza cache
+    const userImageSha256 = crypto.createHash('sha256').update(userImageBuffer).digest('hex');
+
+    // === KROK 2: PER-USER MUTEX Z WŁASNOŚCIĄ SESJI ===
+    const mutexRes = await acquireUserMutex(adminDb, verifiedUid);
+    if (!mutexRes.acquired || !mutexRes.sessionId) {
+      return NextResponse.json(
+        {
+          error: "Wirtualna Stylistka jest zajęta inną przymiarką. Poczekaj chwilę.",
+          mutexLocked: true,
+        },
+        { status: 409 }
+      );
+    }
+    currentSessionId = mutexRes.sessionId;
+
+    // === KROK 3: BEZPIECZNE POBRANIE ODZIEŻY (OCHRONA PRZED SSRF Z PINNINGIEM IP I MAGIC BYTES) ===
     let garm_img = clothingImage;
-    if (clothingImage && clothingImage.startsWith('http')) {
+    let clothingIdentifierOrSha = clothingImage;
+
+    if (clothingImage.startsWith('https://')) {
       try {
-        const proxyRes = await fetch(clothingImage, {
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8'
-          }
+        const fetchedImage = await safeFetchExternalImage(clothingImage);
+        clothingIdentifierOrSha = crypto.createHash('sha256').update(fetchedImage.buffer).digest('hex');
+
+        const fileId = `garm_proxy_${Date.now()}_${crypto.randomBytes(6).toString('hex')}.${fetchedImage.extension}`;
+        proxyStoragePath = `proxied/${fileId}`;
+
+        const proxyFile = bucket.file(proxyStoragePath);
+        await proxyFile.save(fetchedImage.buffer, {
+          contentType: fetchedImage.contentType,
+          resumable: false,
         });
 
-        if (proxyRes.ok) {
-          const arrayBuffer = await proxyRes.arrayBuffer();
-          const mimeType = proxyRes.headers.get('content-type') || 'image/jpeg';
-          const ext = mimeType.split('/')[1]?.split(';')[0] || 'jpg';
-          const fileId = `garm_proxy_${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`;
-
-          proxyStorageRef = ref(storage, `proxied/${fileId}`);
-          await uploadBytes(proxyStorageRef, new Uint8Array(arrayBuffer), { contentType: mimeType });
-          garm_img = await getDownloadURL(proxyStorageRef);
-          console.log(`[TRY-ON] garm_img proxied do Storage: ${garm_img}`);
-        } else {
-          console.warn(`[TRY-ON] Proxy fetch zwrócił ${proxyRes.status} – używam oryginalnego URL jako fallback.`);
+        const [proxySignedUrl] = await proxyFile.getSignedUrl({
+          action: 'read',
+          expires: Date.now() + 15 * 60 * 1000,
+        });
+        garm_img = proxySignedUrl;
+      } catch (err: unknown) {
+        if (err instanceof SsrffValidationError) {
+          return NextResponse.json(
+            { error: `Błąd weryfikacji obrazu odzieży: ${err.message}` },
+            { status: 422 }
+          );
         }
-      } catch (proxyErr: unknown) {
-        const msg = proxyErr instanceof Error ? proxyErr.message : String(proxyErr);
-        console.warn('[TRY-ON] Image Proxy error – używam oryginalnego URL:', msg);
-      }
-    }
-
-    // === KROK 3: CACHE-FIRST – Sprawdzenie try_on_results w Firestore ===
-    // Hash oparty na URL Storage (stabilny, nie bazuje na zmiennym base64)
-    const cacheHash = crypto.createHash('md5')
-      .update(`${uid}|${garm_img}|${productTitle || ''}`)
-      .digest('hex');
-    const cacheRef = doc(db, 'try_on_results', cacheHash);
-
-    console.log(`[TRY-ON] Krok 3: Cache-First check (hash: ${cacheHash})...`);
-    try {
-      const cacheDoc = await getDoc(cacheRef);
-      if (cacheDoc.exists()) {
-        console.log('[TRY-ON] HIT CACHE – zwracam wynik z Firestore bez Replicate!');
-        return NextResponse.json({ imageUrl: cacheDoc.data()?.imageUrl, cached: true });
-      }
-    } catch (cacheReadErr: unknown) {
-      const msg = cacheReadErr instanceof Error ? cacheReadErr.message : String(cacheReadErr);
-      console.warn('[TRY-ON] Cache read error (ignoruję):', msg);
-    }
-
-    // === KROK 4: PER-USER MUTEX – Blokada w Firestore ===
-    console.log('[TRY-ON] Krok 4: Per-User Mutex...');
-    const sessionRef = doc(db, 'active_sessions', uid);
-    const sessionDoc = await getDoc(sessionRef);
-
-    if (sessionDoc.exists() && sessionDoc.data()?.status === 'processing') {
-      const lockAge = Date.now() - (sessionDoc.data()?.timestamp || 0);
-      if (lockAge < 180000) { // 3 minuty
-        console.warn('[TRY-ON] MUTEX: Sesja zajęta!');
         return NextResponse.json(
-          { error: "Wirtualna Stylistka jest zajęta inną przymiarką. Poczekaj chwilę.", mutexLocked: true },
-          { status: 409 }
+          { error: "Nie udało się pobrać bezpiecznego zdjęcia odzieży." },
+          { status: 400 }
         );
       }
-      console.log('[TRY-ON] MUTEX: Deadlock – sesja przeterminowana, nadpisuję.');
+    } else if (clothingImage.startsWith('http://')) {
+      return NextResponse.json(
+        { error: 'Protokół HTTP nie jest dozwolony dla bezpieczeństwa. Wymagany jest HTTPS.' },
+        { status: 400 }
+      );
     }
-    await setDoc(sessionRef, { status: 'processing', timestamp: Date.now(), uid });
 
-    // === KROK 5: WYWOŁANIE IDM-VTON (Czysta Rura AI-to-AI z Gemini) ===
-
-    // ZADANIE 3: Wstrzyknięcie w /api/try-on
-    // Kiedy użytkownik kliknie "Przymierz", frontend przekazuje te dwa pola do /api/try-on.
-    // W payloadzie dla Replicate po prostu przemapuj:
+    // Wyznaczenie finalnych parametrów generacji dla IDM-VTON
     let finalCategory = category || 'upper_body';
     let finalForceDc = finalCategory === 'dresses';
-    let finalGarmentDes = replicatePrompt || productTitle || 'photorealistic clothing, highly detailed';
+    let finalGarmentDes = safePrompt || safeTitle || 'photorealistic clothing, highly detailed';
 
-    // BRUTALNY FALLBACK - ZABEZPIECZENIE: Jeśli w nazwie/opisie jest sukienka, wymuś parametry!
-    const lowerDesc = finalGarmentDes.toLowerCase() + " " + (productTitle || '').toLowerCase();
+    const lowerDesc = finalGarmentDes.toLowerCase() + " " + safeTitle.toLowerCase();
     if (lowerDesc.includes('sukienk') || lowerDesc.includes('suknia') || lowerDesc.includes('maxi') || lowerDesc.includes('balow')) {
       finalCategory = "dresses";
       finalForceDc = true;
 
-      // Jeśli opis jest po polsku, doklej na siłę angielskie wymuszenie!
       if (!lowerDesc.includes('dress')) {
         finalGarmentDes += ", long elegant dress, full length maxi dress, covering legs entirely down to the floor, highly detailed";
       }
     }
 
+    // === KROK 4: DETERMINISTYCZNY CACHE LOOKUP Z TRWAŁYM STORAGE I OBSŁUGĄ LEGACY ===
+    const cacheKey = computeTryOnCacheKey({
+      verifiedUid,
+      userImageSha256,
+      clothingIdentifierOrSha256: clothingIdentifierOrSha,
+      category: finalCategory,
+      replicatePrompt: finalGarmentDes,
+      modelIdentifier: IDM_VTON_MODEL,
+      guidanceScale: MODEL_GUIDANCE_SCALE,
+      numInferenceSteps: MODEL_INFERENCE_STEPS,
+      seed: MODEL_SEED,
+    });
+
+    const cacheRef = adminDb.collection('try_on_results').doc(cacheKey);
+
+    try {
+      const cacheDoc = await cacheRef.get();
+      if (cacheDoc.exists) {
+        const cacheData = cacheDoc.data();
+        if (cacheData?.uid === verifiedUid) {
+          // Jeśli dokument posiada trwałą ścieżkę Storage
+          if (cacheData.storagePath && typeof cacheData.storagePath === 'string') {
+            const cachedFile = bucket.file(cacheData.storagePath);
+            const [exists] = await cachedFile.exists();
+            if (exists) {
+              const [freshSignedUrl] = await cachedFile.getSignedUrl({
+                action: 'read',
+                expires: Date.now() + 15 * 60 * 1000, // Nowy świeży 15-minutowy URL
+              });
+              return NextResponse.json({ imageUrl: freshSignedUrl, cached: true });
+            } else {
+              // Osierocony dokument cache (plik Storage nie istnieje) -> usuń wpis i traktuj jako cache miss
+              await cacheRef.delete().catch(() => { });
+            }
+          }
+          // Legacy cache (posiada wyłącznie bezpośredni imageUrl) -> ignorujemy jako legacy cache miss
+        }
+      }
+    } catch {
+      console.warn('[TRY-ON] Cache read error');
+    }
+
+    // === KROK 5: UPLOAD ZDJĘCIA UŻYTKOWNIKA DO STORAGE (SIGNED URL) ===
+    const secureAvatarId = `base_user_${Date.now()}_${crypto.randomBytes(6).toString('hex')}.${userImageValidation.extension}`;
+    userStoragePath = `users/${verifiedUid}/${secureAvatarId}`;
+
+    const userFile = bucket.file(userStoragePath);
+    await userFile.save(userImageBuffer, {
+      contentType: userImageValidation.mimeType,
+      resumable: false,
+    });
+
+    const [humanSignedUrl] = await userFile.getSignedUrl({
+      action: 'read',
+      expires: Date.now() + 15 * 60 * 1000, // 15 minut TTL
+    });
+
+    // === KROK 6: WYWOŁANIE IDM-VTON ===
     const replicatePayload = {
-      human_img,                         // POLE 1: Zdjęcie użytkownika
-      garm_img,                          // POLE 2: Zdjęcie odzieży
-      garment_des: finalGarmentDes,      // POLE 3: Czysty angielski prompt (bez polskich rad dla sukni!)
-      category: finalCategory,           // POLE 4: upper_body | lower_body | dresses
-      force_dc: finalForceDc,            // POLE 5: Wymuszony DressCode dla kategorii dresses
-      num_inference_steps: 30,
-      guidance_scale: 2.5,
-      seed: 42,
-      crop: false                        // ZADANIE 3: Blokada ucinania krawędzi
+      human_img: humanSignedUrl,
+      garm_img,
+      garment_des: finalGarmentDes,
+      category: finalCategory,
+      force_dc: finalForceDc,
+      num_inference_steps: MODEL_INFERENCE_STEPS,
+      guidance_scale: MODEL_GUIDANCE_SCALE,
+      seed: MODEL_SEED,
+      crop: false,
     };
 
-    console.log(`[TRY-ON] Krok 5: Wywołanie IDM-VTON – kategoria: ${finalCategory}`);
-    // ZADANIE 1: Twardy dowód w logach (Weryfikacja Payloadu)
-    console.log(`[TRY-ON] PAYLOAD WYSYŁANY DO REPLICATE:\n${JSON.stringify(replicatePayload, null, 2)}`);
-
     const output = await replicate.run(IDM_VTON_MODEL, { input: replicatePayload });
-
-    // IDM-VTON zwraca URI (string lub array)
     const resultUri = Array.isArray(output) ? String(output[0]) : String(output);
-    console.log(`[TRY-ON] Sukces! URI: ${resultUri}`);
 
-    // === KROK 6: ZAPIS WYNIKU DO try_on_results (kolekcja zgodna z Zadaniem 2) ===
-    try {
-      await setDoc(cacheRef, {
-        imageUrl: resultUri,
-        uid,
-        garm_img: clothingImage, // Oryginał dla referencji
-        productTitle: productTitle || '',
-        category: finalCategory,
-        timestamp: Date.now()
-      });
-      console.log(`[TRY-ON] Wynik zapisany w try_on_results/${cacheHash}`);
-    } catch (cacheWriteErr: unknown) {
-      const msg = cacheWriteErr instanceof Error ? cacheWriteErr.message : String(cacheWriteErr);
-      console.warn('[TRY-ON] Cache write warning:', msg);
+    // === KROK 7: POBRANIE WYNIKU REPLICATE I ZAPIS DO TRWAŁEGO STORAGE (Z ROLLBACKIEM) ===
+    let clientImageUrl = resultUri;
+    if (resultUri.startsWith('https://')) {
+      let resultFileCreated = false;
+      let resultFileToRollback: ReturnType<typeof bucket.file> | null = null;
+      let cacheRecordSaved = false;
+
+      try {
+        const resultImage = await safeFetchExternalImage(resultUri);
+        const resultStoragePath = `try-on-results/${verifiedUid}/${cacheKey}.${resultImage.extension}`;
+        const resultFile = bucket.file(resultStoragePath);
+        resultFileToRollback = resultFile;
+
+        // 1. Upload do Storage
+        await resultFile.save(resultImage.buffer, {
+          contentType: resultImage.contentType,
+          resumable: false,
+        });
+        resultFileCreated = true;
+
+        // 2. Zapis trwałego rekordu w Firestore try_on_results
+        await cacheRef.set({
+          uid: verifiedUid,
+          cacheKey,
+          storagePath: resultStoragePath,
+          detectedMimeType: resultImage.contentType,
+          createdAt: Date.now(),
+          modelIdentifier: IDM_VTON_MODEL,
+          category: finalCategory,
+          status: 'ready',
+        });
+        cacheRecordSaved = true;
+
+        // 3. Generowanie świeżego signed URL dla klienta
+        const [freshResultSignedUrl] = await resultFile.getSignedUrl({
+          action: 'read',
+          expires: Date.now() + 15 * 60 * 1000,
+        });
+        clientImageUrl = freshResultSignedUrl;
+      } catch (saveErr) {
+        // Rollback: Jeśli upload do Storage powiódł się, ale zapis Firestore NIE (lub błąd wystąpił przed zapisem rekordu)
+        // usuwamy nowo utworzony plik Storage, aby nie pozostawić osieroconego obiektu
+        if (resultFileCreated && !cacheRecordSaved && resultFileToRollback) {
+          try {
+            await resultFileToRollback.delete();
+            console.log('[TRY-ON] Rollback: Pomyślnie usunięto osierocony plik Storage po błędzie zapisu Firestore.');
+          } catch (deleteErr) {
+            console.warn('[TRY-ON] Rollback warning: Nie udało się usunąć osieroconego pliku Storage:', deleteErr);
+          }
+        }
+        console.warn('[TRY-ON] Nie udało się zapisać wyniku do trwałego Storage, fallback do bezpośredniego URI:', saveErr);
+      }
     }
 
-    // === KROK 7: CLEANUP – Mutex + Storage ===
-    await deleteDoc(sessionRef).catch(() => { });
-
-    if (proxyStorageRef) {
-      deleteObject(proxyStorageRef).catch(() => { }); // Fire & forget – nie blokujemy odpowiedzi
-    }
-    if (userImageStorageRef) {
-      deleteObject(userImageStorageRef).catch(() => { }); // RODO: auto-destrukcja po sukcesie
-    }
-
-    return NextResponse.json({ imageUrl: resultUri });
+    return NextResponse.json({ imageUrl: clientImageUrl });
 
   } catch (error: unknown) {
-    // Obsługa Rate Limit (429)
     if (isRateLimitError(error)) {
-      console.warn('[TRY-ON] RATE LIMIT 429 – Replicate przeciążony.');
-      if (proxyStorageRef) deleteObject(proxyStorageRef).catch(() => { });
-      if (userImageStorageRef) deleteObject(userImageStorageRef).catch(() => { });
+      console.warn('[TRY-ON] RATE LIMIT 429');
       return NextResponse.json({ error: "RATE_LIMIT", retryAfter: 12 }, { status: 429 });
     }
 
-    const errorMsg = error instanceof Error ? error.message : String(error);
-    console.error('[TRY-ON] BŁĄD:', errorMsg);
+    console.error('[TRY-ON] BŁĄD przetwarzania przymiarki');
+    return NextResponse.json({ error: "Błąd serwera generowania przymiarki" }, { status: 500 });
 
-    // Cleanup Mutex w przypadku błędu
-    if (globalUid) {
-      deleteDoc(doc(db, 'active_sessions', globalUid)).catch(() => { });
+  } finally {
+    // === KROK 8: CLEANUP MUTEX + STORAGE ===
+    if (currentSessionId) {
+      releaseUserMutex(adminDb, verifiedUid, currentSessionId).catch(() => { });
     }
-    if (proxyStorageRef) deleteObject(proxyStorageRef).catch(() => { });
-    if (userImageStorageRef) deleteObject(userImageStorageRef).catch(() => { });
-
-    return NextResponse.json({ error: errorMsg || "Błąd serwera" }, { status: 500 });
+    if (userStoragePath) {
+      bucket.file(userStoragePath).delete().catch(() => { });
+    }
+    if (proxyStoragePath) {
+      bucket.file(proxyStoragePath).delete().catch(() => { });
+    }
   }
 }
