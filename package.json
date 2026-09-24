@@ -10,7 +10,8 @@
     "test:security": "tsx test-security.ts",
     "test:products": "tsx test-product-model.ts",
     "test:market": "tsx test-market.ts",
-    "test:credits": "tsx test-try-on-credits.ts"
+    "test:credits": "tsx test-try-on-credits.ts",
+    "test:landing": "tsx test-landing.ts"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
