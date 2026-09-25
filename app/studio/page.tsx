@@ -2,20 +2,16 @@
 
 import TryOnWidget from "@/components/TryOnWidget";
 import MarketHeader from "@/components/MarketHeader";
-import AuthGatekeeper from "@/components/AuthGatekeeper";
 import AuthHeader from "@/components/AuthHeader";
 
 export default function StudioPage() {
   return (
-    <AuthGatekeeper>
-      {/* Wszystko poniżej jest NIEDOSTĘPNE do momentu zalogowania */}
-      <main className="min-h-screen bg-slate-950">
-        <AuthHeader />
-        <MarketHeader />
-        <div className="max-w-5xl mx-auto px-4 py-8">
-          <TryOnWidget />
-        </div>
-      </main>
-    </AuthGatekeeper>
+    <main className="min-h-screen bg-[#FAF7F2] text-[#242220] overflow-x-hidden flex flex-col">
+      <AuthHeader />
+      <MarketHeader />
+      <div className="w-full flex-grow flex flex-col items-center">
+        <TryOnWidget />
+      </div>
+    </main>
   );
 }

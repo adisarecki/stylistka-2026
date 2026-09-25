@@ -7,10 +7,10 @@ export default function MarketHeader() {
   const { market } = useMarket();
 
   return (
-    <div className="absolute top-4 right-4 sm:top-8 sm:right-8 z-50">
-      <div className="flex items-center gap-2 bg-slate-900/80 border border-slate-800 px-3.5 py-1.5 rounded-full text-slate-300 text-xs font-medium backdrop-blur-md shadow-sm">
-        <Globe size={14} className="text-indigo-400 shrink-0" />
-        <span>Dostawa: <strong className="text-slate-100 font-semibold">{market.countryName}</strong> ({market.currency})</span>
+    <div className="flex items-center justify-end max-w-5xl mx-auto px-4 pt-2 pb-0">
+      <div className="inline-flex items-center gap-1.5 bg-[#FFFFFF] border border-[#EAE3D9] px-2.5 py-1 rounded-full text-[#6B645C] text-[11px] font-medium shadow-xs">
+        <Globe size={12} className="text-[#83223A] shrink-0" />
+        <span>Dostawa: <strong className="text-[#242220] font-semibold">{market.countryName}</strong> ({market.currency})</span>
       </div>
     </div>
   );

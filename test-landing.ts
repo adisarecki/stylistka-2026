@@ -22,17 +22,16 @@ test('1. Landing Page Contract: app/page.tsx reprezentuje publiczny landing page
 // ---------------------------------------------------------------------------
 // 2. /studio zawiera właściwy interfejs aplikacji
 // ---------------------------------------------------------------------------
-test('2. Studio Contract: app/studio/page.tsx montuje interfejs narzędzia Stylistki z AuthGatekeeper', () => {
+test('2. Studio Contract: app/studio/page.tsx montuje interfejs narzędzia Stylistki', () => {
   const studioPath = path.resolve(process.cwd(), 'app/studio/page.tsx');
   assert.ok(fs.existsSync(studioPath), 'app/studio/page.tsx musi istnieć');
   const code = fs.readFileSync(studioPath, 'utf8');
 
   assert.match(code, /import TryOnWidget from ["']@\/components\/TryOnWidget["']/, 'Studio musi importować TryOnWidget');
-  assert.match(code, /import AuthGatekeeper from ["']@\/components\/AuthGatekeeper["']/, 'Studio musi importować AuthGatekeeper');
   assert.match(code, /import MarketHeader from ["']@\/components\/MarketHeader["']/, 'Studio musi importować MarketHeader');
   assert.match(code, /import AuthHeader from ["']@\/components\/AuthHeader["']/, 'Studio musi importować AuthHeader');
 
-  assert.match(code, /<AuthGatekeeper>/, 'Studio musi chronić interfejs przez AuthGatekeeper');
+  assert.doesNotMatch(code, /<AuthGatekeeper>/, 'Studio nie może blokować interfejsu przez AuthGatekeeper przed analizą');
   assert.match(code, /<TryOnWidget\s*\/>/, 'Studio musi renderować TryOnWidget');
 });
 
