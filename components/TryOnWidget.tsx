@@ -1,14 +1,32 @@
 'use client';
 
-import { useState, useEffect, useRef, ChangeEvent } from 'react';
+import React, { useState, useEffect, useRef, ChangeEvent, KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { auth } from '@/lib/firebase';
 import { signInWithPopup, GoogleAuthProvider, onAuthStateChanged, User } from 'firebase/auth';
 import { authenticatedFetch, AuthenticationRequiredError } from '@/lib/auth-fetch';
 import { CanonicalProduct, hasVerifiedTryOnAsset } from '@/types/product';
+import {
+  ClothingCategory,
+  Occasion,
+  StylePreference,
+  StylingPreferences,
+  CLOTHING_CATEGORIES,
+  OCCASIONS,
+  STYLE_PREFERENCES,
+  CATEGORY_NAMES,
+  OCCASION_NAMES,
+  STYLE_NAMES,
+  CATEGORY_CUTS,
+  CATEGORY_FALLBACK_CUT,
+  sanitizeUserText,
+  VtonCategory,
+  ValidVtonCategory,
+  isValidVtonCategory,
+} from '@/types/styling';
 import { useMarket } from './MarketContext';
 import { Loader2 } from 'lucide-react';
 
-export type StudioView = 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G1' | 'G2' | 'G3';
+export type StudioView = 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'H' | 'I' | 'J1' | 'J2' | 'J3';
 
 export type ProductLoadStatus = 'idle' | 'loading' | 'ready' | 'empty' | 'error';
 
@@ -56,245 +74,185 @@ interface AnalysisResult {
   uiTitle: string;
   apiQuery: string;
   stylistComment: string;
-  bodyShape: string;
   strength: string;
   advice: string;
-  avoid: string;
-  garmentDetails?: {
-    color?: string;
-    garmentType?: string;
-    cut?: string;
-    occasion?: string;
-  };
-  replicateCategory?: string;
-  replicatePrompt?: string;
+  considerations: string;
+  recommendedCut: string;
+  replicateCategory: VtonCategory;
+  replicatePrompt: string | null;
+  preferences?: StylingPreferences;
 }
 
-interface StyleRecommendation {
+interface StyleRecommendationCard {
   id: string;
   title: string;
+  reason: string;
   badges: string[];
   tip: string;
-  illustration: 'wrap' | 'skirt' | 'vneck';
+  category: ClothingCategory;
 }
 
-const getRecommendations = (
-  shape: string,
-  garmentDetails?: AnalysisResult['garmentDetails']
-): StyleRecommendation[] => {
-  const normalizedShape = shape ? shape.toUpperCase().trim() : 'NIEZNANA';
+export interface TryOnValidationResult {
+  canProceed: boolean;
+  error?: string;
+  vtonCategory?: ValidVtonCategory;
+}
 
-  switch (normalizedShape) {
-    case 'JABŁKO':
-      return [
-        {
-          id: 'apple-empire',
-          title: 'Fason empire lub odcięcie pod biustem',
-          badges: ['✨ Swoboda w talii', '✨ Miękka linia bioder'],
-          tip: 'Wybieraj zwiewne, płynnie układające się tkaniny.',
-          illustration: 'wrap',
-        },
-        {
-          id: 'apple-vneck',
-          title: 'Top lub sukienka z dekoltem V',
-          badges: ['✨ Wysmuklenie szyi', '✨ Otwarta linia dekoltu'],
-          tip: 'Optycznie wydłuża sylwetkę i dodaje lekkości stylizacji.',
-          illustration: 'vneck',
-        },
-        {
-          id: 'apple-layer',
-          title: 'Prosta, miękko układająca się warstwa',
-          badges: ['✨ Pionowe linie', '✨ Płynny ruch tkaniny'],
-          tip: 'Dłuższa narzutka lub kardigan tworzy harmonijną, spójną całość.',
-          illustration: 'skirt',
-        },
-      ];
-
-    case 'GRUSZKA':
-      return [
-        {
-          id: 'pear-skirt-a',
-          title: 'Spódnica lub sukienka o linii A',
-          badges: ['✨ Podkreśla talię', '✨ Swoboda w biodrach'],
-          tip: 'Długość midi lub do kolana pięknie równoważy proporcje dolnej części ciała.',
-          illustration: 'skirt',
-        },
-        {
-          id: 'pear-shoulder',
-          title: 'Góra z detalem przy ramionach',
-          badges: ['✨ Balans proporcji', '✨ Wyrazista linia ramion'],
-          tip: 'Łódkowy dekolt lub ozdobne rękawy optycznie harmonizują linię bioder.',
-          illustration: 'vneck',
-        },
-        {
-          id: 'pear-waist',
-          title: 'Fason podkreślający talię',
-          badges: ['✨ Zaznaczona talia', '✨ Kobiecy zarys'],
-          tip: 'Pasek lub dopasowana góra eksponuje naturalne atuty sylwetki.',
-          illustration: 'wrap',
-        },
-      ];
-
-    case 'KLEPSYDRA':
-      return [
-        {
-          id: 'hourglass-wrap',
-          title: 'Sukienka lub bluzka kopertowa',
-          badges: ['✨ Akcentuje wcięcie w talii', '✨ Naturalny dekolt V'],
-          tip: 'Wybieraj miękko układające się tkaniny, które otulają linię bioder.',
-          illustration: 'wrap',
-        },
-        {
-          id: 'hourglass-waist',
-          title: 'Fason z zaznaczoną talią',
-          badges: ['✨ Proporcjonalny krój', '✨ Harmonijny zarys'],
-          tip: 'Kroje dopasowane w pasie subtelnie podkreślają naturalną symetrię.',
-          illustration: 'skirt',
-        },
-        {
-          id: 'hourglass-vneck',
-          title: 'Dekolt V lub łagodny dekolt',
-          badges: ['✨ Wysmuklenie szyi', '✨ Subtelny akcent'],
-          tip: 'Świetnie sprawdza się w stylizacjach codziennych i eleganckich.',
-          illustration: 'vneck',
-        },
-      ];
-
-    case 'KOLUMNA':
-      return [
-        {
-          id: 'column-belt',
-          title: 'Fason z paskiem lub zaznaczoną talią',
-          badges: ['✨ Wyraźniejszy zarys talii', '✨ Modelowanie proporcji'],
-          tip: 'Pasek lub marszczenie w talii dodaje sylwetce plastyczności.',
-          illustration: 'wrap',
-        },
-        {
-          id: 'column-top',
-          title: 'Warstwowy lub strukturalny top',
-          badges: ['✨ Trójwymiarowa forma', '✨ Ciekawe faktury'],
-          tip: 'Plisy, żakard lub geometryczne przeszycia nadają stylizacji głębi.',
-          illustration: 'vneck',
-        },
-        {
-          id: 'column-skirt-a',
-          title: 'Spódnica lub sukienka o linii A',
-          badges: ['✨ Rozszerzany dół', '✨ Ruch i lekkość'],
-          tip: 'Krój rozkloszowany nadaje sylwetce łagodnych, kobiecych konturów.',
-          illustration: 'skirt',
-        },
-      ];
-
-    case 'ROŻEK':
-      return [
-        {
-          id: 'cone-skirt-a',
-          title: 'Spódnica lub sukienka o linii A',
-          badges: ['✨ Dodaje objętości dołowi', '✨ Równoważy ramiona'],
-          tip: 'Rozszerzany dół tworzy pożądaną równowagę z linią ramion.',
-          illustration: 'skirt',
-        },
-        {
-          id: 'cone-pants',
-          title: 'Spodnie o szerszej nogawce',
-          badges: ['✨ Swobodny krok', '✨ Balans linii bioder'],
-          tip: 'Fasony z prostą lub szerszą nogawką harmonizują proporcje sylwetki.',
-          illustration: 'wrap',
-        },
-        {
-          id: 'cone-vneck',
-          title: 'Prosta góra z dekoltem V',
-          badges: ['✨ Wysmukla linię ramion', '✨ Pionowy podział'],
-          tip: 'Gładkie, jednolite bluzki z dekoltem w szpic łagodzą linię barków.',
-          illustration: 'vneck',
-        },
-      ];
-
-    case 'NIEZNANA':
-    default: {
-      const recs: StyleRecommendation[] = [];
-      const itemTitle1 = garmentDetails?.garmentType
-        ? `Fason: ${garmentDetails.garmentType}`
-        : 'Uniwersalny fason o prostych liniach';
-      const itemTitle2 = garmentDetails?.cut
-        ? `Krój: ${garmentDetails.cut}`
-        : 'Lekko taliowana linia';
-
-      recs.push({
-        id: 'neutral-1',
-        title: itemTitle1,
-        badges: ['✨ Ponadczasowy krój', '✨ Wygoda noszenia'],
-        tip: 'Klasyczny krój sprawdzający się w różnorodnych zestawieniach.',
-        illustration: 'vneck',
-      });
-
-      recs.push({
-        id: 'neutral-2',
-        title: itemTitle2,
-        badges: ['✨ Naturalne ułożenie', '✨ Swoboda ruchów'],
-        tip: 'Dopasuj proporcje do swoich indywidualnych upodobań i stylu.',
-        illustration: 'skirt',
-      });
-
-      return recs;
-    }
+/**
+ * Czysta walidacja kwalifikacji produktu i kategorii przed uruchomieniem procedury przymiarki.
+ * Gwarantuje, że niepoprawna kategoria lub brakujące zasoby nie wprowadzą UI w stan ładowania.
+ */
+export function validateTryOnPrerequisites(params: {
+  personBase64: string | null;
+  isAppProcessing: boolean;
+  isTryOnLoading: boolean;
+  product: CanonicalProduct;
+  replicateCategory: unknown;
+}): TryOnValidationResult {
+  if (!params.personBase64 || params.isAppProcessing || params.isTryOnLoading) {
+    return { canProceed: false };
   }
-};
 
-export default function TryOnWidget() {
+  if (!hasVerifiedTryOnAsset(params.product)) {
+    return {
+      canProceed: false,
+      error: 'Ten produkt nie jest obecnie dostępny do wirtualnej przymiarki.',
+    };
+  }
+
+  const clothingImageUrl = params.product.tryOnAsset?.image?.url;
+  const clothingTitle = params.product.title;
+
+  if (!clothingImageUrl || !clothingTitle || !clothingImageUrl.trim() || !clothingTitle.trim()) {
+    return {
+      canProceed: false,
+      error: 'Ten produkt nie jest obecnie dostępny do wirtualnej przymiarki.',
+    };
+  }
+
+  if (!params.replicateCategory || !isValidVtonCategory(params.replicateCategory)) {
+    return {
+      canProceed: false,
+      error: 'Wirtualna przymiarka nie jest dostępna dla pełnych stylizacji ani tego typu asortymentu.',
+    };
+  }
+
+  return {
+    canProceed: true,
+    vtonCategory: params.replicateCategory,
+  };
+}
+
+export interface ClientTryOnRequestPayload {
+  requestId: string;
+  personImage: string;
+  clothingImage: string;
+  category: ValidVtonCategory;
+}
+
+/**
+ * Buduje bezpieczny payload żądania do /api/try-on.
+ * Całkowicie wyklucza przekazywanie porad Gemini (advice), modyfikatorów sylwetki czy swobodnych promptów tekstowych.
+ */
+export function buildClientTryOnRequestPayload(params: {
+  requestId: string;
+  personImage: string;
+  clothingImageUrl: string;
+  category: ValidVtonCategory;
+}): ClientTryOnRequestPayload {
+  return {
+    requestId: params.requestId,
+    personImage: params.personImage,
+    clothingImage: params.clothingImageUrl,
+    category: params.category,
+  };
+}
+
+export interface TryOnWidgetInitialState {
+  initialView?: StudioView;
+  initialProducts?: CanonicalProduct[];
+  initialAnalysisResult?: AnalysisResult | null;
+  initialPersonBase64?: string | null;
+  initialUser?: User | { uid: string; email?: string | null; displayName?: string | null } | null;
+  initialSelectedCategory?: ClothingCategory | null;
+}
+
+export interface TryOnWidgetProps {
+  initialState?: TryOnWidgetInitialState;
+  customFetch?: typeof authenticatedFetch;
+}
+
+export default function TryOnWidget({ initialState, customFetch }: TryOnWidgetProps = {}): React.ReactElement {
+  const effectiveFetch = customFetch || authenticatedFetch;
   const { market } = useMarket();
 
-  // Aktywny widok maszyny stanów (domyślnie 'A')
-  const [currentView, setCurrentView] = useState<StudioView>('A');
+  // 1. Nawigacja i stan maszyny widoków
+  const [currentView, setCurrentView] = useState<StudioView>(initialState?.initialView ?? 'A');
 
-  // Stan autoryzacji Firebase
-  const [user, setUser] = useState<User | null>(null);
-  const [isSigningIn, setIsSigningIn] = useState(false);
+  // 2. Preferencje stylizacji (R3C)
+  const [selectedCategory, setSelectedCategory] = useState<ClothingCategory | null>(initialState?.initialSelectedCategory ?? null);
+  const [selectedOccasion, setSelectedOccasion] = useState<Occasion | null>(null);
+  const [customOccasion, setCustomOccasion] = useState<string>('');
+  const [selectedStyles, setSelectedStyles] = useState<StylePreference[]>([]);
+  const [notes, setNotes] = useState<string>('');
 
-  // Stan wgranego pliku
+  // 3. Stan zdjęcia i pliku
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [personBase64, setPersonBase64] = useState<string | null>(null);
-  const [consentChecked, setConsentChecked] = useState(false);
-  const [isImageProcessing, setIsImageProcessing] = useState(false);
+  const [personBase64, setPersonBase64] = useState<string | null>(initialState?.initialPersonBase64 ?? null);
+  const [isImageProcessing, setIsImageProcessing] = useState<boolean>(false);
   const [fileError, setFileError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Stan analizy i wyników
-  const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
-  const [isAnalysisLoading, setIsAnalysisLoading] = useState(false);
+  // 4. Zgoda na analizę sylwetki
+  const [consentChecked, setConsentChecked] = useState<boolean>(false);
 
-  // Stan produktów
-  const [products, setProducts] = useState<CanonicalProduct[]>([]);
-  const [productLoadStatus, setProductLoadStatus] = useState<ProductLoadStatus>('idle');
+  // 5. Stan uwierzytelnienia użytkownika
+  const [user, setUser] = useState<User | { uid: string; email?: string | null; displayName?: string | null } | null>(initialState?.initialUser ?? null);
+  const [isSigningIn, setIsSigningIn] = useState<boolean>(false);
+  const prevUserUidRef = useRef<string | null>(initialState?.initialUser ? initialState.initialUser.uid : null);
 
-  // Mutex VTON
-  const [isTryOnLoading, setIsTryOnLoading] = useState(false);
-  const [isAppProcessing, setIsAppProcessing] = useState(false);
+  // 6. Stan analizy sylwetki
+  const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(initialState?.initialAnalysisResult ?? null);
+  const [isAnalysisLoading, setIsAnalysisLoading] = useState<boolean>(false);
+
+  // 7. Stan produktów i wyszukiwarki
+  const [products, setProducts] = useState<CanonicalProduct[]>(initialState?.initialProducts ?? []);
+  const [productLoadStatus, setProductLoadStatus] = useState<ProductLoadStatus>(initialState?.initialProducts?.length ? 'ready' : 'idle');
+
+  // 8. Stan wirtualnej przymiarki (VTON)
   const [tryOnImage, setTryOnImage] = useState<string | null>(null);
   const [tryOnError, setTryOnError] = useState<string | null>(null);
+  const [isTryOnLoading, setIsTryOnLoading] = useState<boolean>(false);
+  const [isAppProcessing, setIsAppProcessing] = useState<boolean>(false);
 
-  // Referencje
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const prevUserUidRef = useRef<string | null>(null);
+  // 9. Stan okna modalnego potwierdzenia resetu
+  const [isResetModalOpen, setIsResetModalOpen] = useState<boolean>(false);
+  const resetModalOpenerRef = useRef<HTMLElement | null>(null);
+  const resetModalCancelBtnRef = useRef<HTMLButtonElement>(null);
 
-  // Liczniki generacji do ochrony przed wyścigami asynchronicznymi
-  const imageProcessingGenerationRef = useRef(0);
-  const studioGenerationRef = useRef(0);
-  const analysisInFlightRef = useRef(false);
+  // 10. Ochrona przed wyścigami: liczniki generacji i AbortControllers
+  const studioGenerationRef = useRef<number>(0);
+  const imageProcessingGenerationRef = useRef<number>(0);
+  const analysisInFlightRef = useRef<boolean>(false);
+  const tryOnInFlightRef = useRef<boolean>(false);
 
-  // Kontrolery AbortController dla poszczególnych operacji
   const analysisAbortControllerRef = useRef<AbortController | null>(null);
   const productsAbortControllerRef = useRef<AbortController | null>(null);
   const tryOnAbortControllerRef = useRef<AbortController | null>(null);
 
-  // Funkcja całkowitego resetowania stanu Studio
+  // Reset zgody po każdej zmianie zdjęcia (Wymóg R3C)
+  const resetConsentAfterPhotoChange = () => {
+    setConsentChecked(false);
+  };
+
+  // Pełny reset sesji Studia
   const resetStudio = () => {
-    // 1. Inkrementacja generacji i natychmiastowe zwolnienie mutexu analizy
     studioGenerationRef.current += 1;
     imageProcessingGenerationRef.current += 1;
     analysisInFlightRef.current = false;
+    tryOnInFlightRef.current = false;
 
-    // 2. Anulowanie wszystkich trwających żądań sieciowych
     if (analysisAbortControllerRef.current) {
       analysisAbortControllerRef.current.abort();
       analysisAbortControllerRef.current = null;
@@ -308,38 +266,62 @@ export default function TryOnWidget() {
       tryOnAbortControllerRef.current = null;
     }
 
-    // 3. Czyszczenie zasobów DOM i pamięci
     if (previewUrl) {
       URL.revokeObjectURL(previewUrl);
     }
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
+
+    setSelectedCategory(null);
+    setSelectedOccasion(null);
+    setCustomOccasion('');
+    setSelectedStyles([]);
+    setNotes('');
+
     setSelectedFile(null);
     setPreviewUrl(null);
     setPersonBase64(null);
-    setConsentChecked(false);
+    resetConsentAfterPhotoChange();
     setIsImageProcessing(false);
     setFileError(null);
+
     setAnalysisResult(null);
     setIsAnalysisLoading(false);
+
     setProducts([]);
     setProductLoadStatus('idle');
+
     setTryOnImage(null);
     setTryOnError(null);
     setIsTryOnLoading(false);
     setIsAppProcessing(false);
+
+    setIsResetModalOpen(false);
     setCurrentView('A');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   // Nasłuchiwanie autoryzacji Firebase z czyszczeniem po wylogowaniu
+  const isInitialAuthRef = useRef(true);
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       const prevUid = prevUserUidRef.current;
       const currentUid = currentUser ? currentUser.uid : null;
 
-      // Wykryj rzeczywiste przejście: zalogowany -> brak użytkownika lub zmiana UID
+      if (isInitialAuthRef.current) {
+        isInitialAuthRef.current = false;
+        // On the first auth callback, if initialState provided a user and
+        // Firebase confirms the same UID, accept without reset.
+        // Any mismatch (null = logged out, different UID = account switch)
+        // falls through to the standard reset logic below.
+        if (initialState?.initialUser && currentUid === initialState.initialUser.uid) {
+          prevUserUidRef.current = currentUid;
+          setUser(currentUser);
+          return;
+        }
+      }
+
       if (prevUid !== null && currentUid === null) {
         resetStudio();
       } else if (prevUid !== null && currentUid !== null && prevUid !== currentUid) {
@@ -368,48 +350,90 @@ export default function TryOnWidget() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  // Obsługa wyboru pliku z natychmiastowym czyszczeniem Base64, walidacją i licznikiem generacji
+  // Zmiana preferencji unieważnia dotychczasowe rekomendacje, produkty i aktywne wywołania asynchroniczne
+  const handleEditChoices = (targetView: 'B' | 'C' | 'D') => {
+    // 1. Zwiększenie generacji unieważnia wszelkie opóźnione odpowiedzi asynchroniczne
+    studioGenerationRef.current += 1;
+    analysisInFlightRef.current = false;
+    tryOnInFlightRef.current = false;
+
+    // 2. Anulowanie trwających żądań HTTP
+    if (analysisAbortControllerRef.current) {
+      analysisAbortControllerRef.current.abort();
+      analysisAbortControllerRef.current = null;
+    }
+    if (productsAbortControllerRef.current) {
+      productsAbortControllerRef.current.abort();
+      productsAbortControllerRef.current = null;
+    }
+    if (tryOnAbortControllerRef.current) {
+      tryOnAbortControllerRef.current.abort();
+      tryOnAbortControllerRef.current = null;
+    }
+
+    // 3. Czyszczenie stanu analizy, produktów i VTON (zdjęcie jest zachowywane zgodnie z zaakceptowanym UX)
+    setAnalysisResult(null);
+    setIsAnalysisLoading(false);
+    setProducts([]);
+    setProductLoadStatus('idle');
+    setTryOnImage(null);
+    setTryOnError(null);
+    setIsTryOnLoading(false);
+    setIsAppProcessing(false);
+
+    showView(targetView);
+  };
+
+  // Obsługa wyboru pliku z natychmiastowym czyszczeniem Base64, walidacją i resetem zgody
   const handleFileChange = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    // Reset zgody przy każdej próbie zmiany pliku
+    resetConsentAfterPhotoChange();
 
     // 1. Walidacja typu MIME
     const allowedMimes = ['image/jpeg', 'image/png', 'image/webp'];
     if (!allowedMimes.includes(file.type)) {
       imageProcessingGenerationRef.current += 1;
-      if (previewUrl) {
-        URL.revokeObjectURL(previewUrl);
-      }
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
       setSelectedFile(null);
       setPreviewUrl(null);
       setPersonBase64(null);
       setIsImageProcessing(false);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
-      setFileError('Wybierz zdjęcie JPG, PNG lub WEBP.');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      setFileError('Nieobsługiwany format pliku. Wybierz zdjęcie w formacie JPG, PNG lub WEBP.');
       return;
     }
 
-    // 2. Walidacja rozmiaru (maksymalnie 10 MiB)
+    // 2. Walidacja pustego pliku
+    if (file.size === 0) {
+      imageProcessingGenerationRef.current += 1;
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      setSelectedFile(null);
+      setPreviewUrl(null);
+      setPersonBase64(null);
+      setIsImageProcessing(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      setFileError('Plik jest pusty. Wybierz poprawne zdjęcie.');
+      return;
+    }
+
+    // 3. Walidacja rozmiaru (maksymalnie 10 MiB)
     const MAX_SIZE = 10 * 1024 * 1024;
     if (file.size > MAX_SIZE) {
       imageProcessingGenerationRef.current += 1;
-      if (previewUrl) {
-        URL.revokeObjectURL(previewUrl);
-      }
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
       setSelectedFile(null);
       setPreviewUrl(null);
       setPersonBase64(null);
       setIsImageProcessing(false);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
-      setFileError('Zdjęcie może mieć maksymalnie 10 MB.');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      setFileError('Plik jest zbyt duży (maksymalnie 10 MB). Wybierz mniejsze zdjęcie.');
       return;
     }
 
-    // 3. Po pozytywnej walidacji MIME i rozmiaru – natychmiastowe czyszczenie starego obrazu i powiązanych danych
+    // 4. Po pozytywnej walidacji: natychmiastowe czyszczenie starego obrazu
     setFileError(null);
     setPersonBase64(null);
     if (previewUrl) {
@@ -422,9 +446,7 @@ export default function TryOnWidget() {
     setTryOnImage(null);
     setTryOnError(null);
 
-    // 4. Inkrementacja generacji przetwarzania obrazu
     const generation = ++imageProcessingGenerationRef.current;
-
     const objectUrl = URL.createObjectURL(file);
     setSelectedFile(file);
     setPreviewUrl(objectUrl);
@@ -432,7 +454,6 @@ export default function TryOnWidget() {
 
     try {
       const base64 = await processImage(file);
-      // Ochrona przed wyścigiem: jeśli w międzyczasie rozpoczęto nowsze przetwarzanie, ignoruj
       if (generation !== imageProcessingGenerationRef.current) return;
       setPersonBase64(base64);
     } catch (err) {
@@ -440,20 +461,28 @@ export default function TryOnWidget() {
       if (generation !== imageProcessingGenerationRef.current) return;
       setSelectedFile(null);
       setPersonBase64(null);
-      if (objectUrl) {
-        URL.revokeObjectURL(objectUrl);
-      }
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
       setPreviewUrl(null);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
+      if (fileInputRef.current) fileInputRef.current.value = '';
       setFileError('Nie udało się przetworzyć wybranego zdjęcia.');
-      showView('G1');
+      resetConsentAfterPhotoChange();
+      showView('J1');
     } finally {
       if (generation === imageProcessingGenerationRef.current) {
         setIsImageProcessing(false);
       }
     }
+  };
+
+  const handleClearPhoto = () => {
+    resetConsentAfterPhotoChange();
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setSelectedFile(null);
+    setPreviewUrl(null);
+    setPersonBase64(null);
+    setIsImageProcessing(false);
+    setFileError(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   // Logowanie Google
@@ -474,9 +503,10 @@ export default function TryOnWidget() {
 
   // Uruchomienie analizy z synchronicznym mutexem analysisInFlightRef oraz ochroną generacyjną
   const handleStartAnalysis = async () => {
-    // 1. Synchroniczny mutex przed jakimkolwiek await
     if (analysisInFlightRef.current) return;
     if (isAnalysisLoading) return;
+    if (!selectedCategory || !selectedOccasion) return;
+    if (selectedOccasion === 'other' && (!customOccasion.trim() || customOccasion.trim().length < 2)) return;
     if (!selectedFile || !personBase64 || !consentChecked || isImageProcessing) return;
 
     analysisInFlightRef.current = true;
@@ -484,7 +514,6 @@ export default function TryOnWidget() {
 
     const sessionGen = studioGenerationRef.current;
 
-    // Anuluj ewentualne poprzednie żądanie analizy
     if (analysisAbortControllerRef.current) {
       analysisAbortControllerRef.current.abort();
     }
@@ -497,22 +526,29 @@ export default function TryOnWidget() {
         currentUser = await handleGoogleLogin();
         if (sessionGen !== studioGenerationRef.current) return;
         if (!currentUser) {
-          // Użytkowniczka zamknęła okno logowania
           return;
         }
       }
 
-      // Przejście do widoku oczekiwania D
       if (sessionGen !== studioGenerationRef.current) return;
-      showView('D');
+      showView('G');
 
-      const response = await authenticatedFetch('/api/analyze', {
+      const preferencesPayload: StylingPreferences = {
+        category: selectedCategory,
+        occasion: selectedOccasion,
+        customOccasion: selectedOccasion === 'other' ? customOccasion.trim() : undefined,
+        styles: selectedStyles,
+        notes: notes.trim() ? notes.trim() : undefined,
+      };
+
+      const response = await effectiveFetch('/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         signal: abortController.signal,
         body: JSON.stringify({
           image: personBase64,
-          query: 'fasony sylwetki',
+          consent: true,
+          preferences: preferencesPayload,
         }),
       });
 
@@ -523,44 +559,71 @@ export default function TryOnWidget() {
 
       if (!response.ok) {
         if (response.status === 400 || (data.error && data.error.includes('IMAGE'))) {
-          showView('G1');
+          showView('J1');
           return;
         }
-        showView('G2');
+        showView('J2');
+        return;
+      }
+
+      // Weryfikacja integralności odpowiedzi z serwera (zakaz globalnych fallbacków na sukienki)
+      const isFullOutfit = selectedCategory === 'full_outfit';
+      const isReplicateCategoryValid = isFullOutfit
+        ? data.replicateCategory === null || data.replicateCategory === undefined
+        : ['upper_body', 'lower_body', 'dresses'].includes(data.replicateCategory);
+
+      if (
+        !data.uiTitle ||
+        typeof data.uiTitle !== 'string' ||
+        !data.apiQuery ||
+        typeof data.apiQuery !== 'string' ||
+        !data.stylistComment ||
+        typeof data.stylistComment !== 'string' ||
+        !data.strength ||
+        typeof data.strength !== 'string' ||
+        !data.advice ||
+        typeof data.advice !== 'string' ||
+        !data.considerations ||
+        typeof data.considerations !== 'string' ||
+        !data.recommendedCut ||
+        typeof data.recommendedCut !== 'string' ||
+        !isReplicateCategoryValid
+      ) {
+        console.error('Invalid analysis response contract from server:', data);
+        showView('J2');
         return;
       }
 
       const result: AnalysisResult = {
-        strength: data.strength || 'Twoja sylwetka ma doskonałe, naturalne proporcje.',
-        advice: data.advice || 'Wybieraj kroje akcentujące talię i miękko opływające linię bioder.',
-        avoid: data.avoid || 'Unikaj zbyt sztywnych materiałów o prostym, pudełkowym kroju.',
-        uiTitle: data.uiTitle || 'Rekomendacje fasonów',
-        apiQuery: data.apiQuery || 'sukienka kopertowa',
+        uiTitle: data.uiTitle,
+        apiQuery: data.apiQuery,
         stylistComment: data.stylistComment,
-        bodyShape: data.bodyShape || 'NIEZNANA',
-        garmentDetails: data.garmentDetails,
-        replicateCategory: data.replicateCategory || 'upper_body',
-        replicatePrompt: data.replicatePrompt || '',
+        strength: data.strength,
+        advice: data.advice,
+        considerations: data.considerations,
+        recommendedCut: data.recommendedCut,
+        replicateCategory: (data.replicateCategory as VtonCategory) ?? null,
+        replicatePrompt: typeof data.replicatePrompt === 'string' ? data.replicatePrompt : null,
+        preferences: preferencesPayload,
       };
 
       setAnalysisResult(result);
 
-      // Pobranie produktów w tle dla widoku F
-      fetchProductsForView(result.apiQuery, false);
+      // Pobranie produktów w tle dla widoku I
+      fetchProductsForView(result.apiQuery, selectedCategory, false);
 
-      // Przejście do widoku rekomendacji krojów E
-      showView('E');
+      // Przejście do widoku rekomendacji krojów H
+      showView('H');
     } catch (err: unknown) {
       if (err instanceof Error && err.name === 'AbortError') {
-        // Kontrolowane przerwanie: nie prowadzi do błędu G2
         return;
       }
       if (sessionGen !== studioGenerationRef.current) return;
       console.error('Analysis failed:', err);
       if (err instanceof AuthenticationRequiredError) {
-        showView('C');
+        showView('F');
       } else {
-        showView('G2');
+        showView('J2');
       }
     } finally {
       if (sessionGen === studioGenerationRef.current) {
@@ -571,10 +634,9 @@ export default function TryOnWidget() {
   };
 
   // Pobranie produktów z API z obsługą statusu ProductLoadStatus, AbortController i generacji
-  const fetchProductsForView = async (query: string, navigateOnFinish = false) => {
+  const fetchProductsForView = async (query: string, category?: ClothingCategory, navigateOnFinish = false) => {
     const sessionGen = studioGenerationRef.current;
 
-    // Anuluj poprzednie żądanie pobierania produktów
     if (productsAbortControllerRef.current) {
       productsAbortControllerRef.current.abort();
     }
@@ -585,8 +647,9 @@ export default function TryOnWidget() {
     setProducts([]);
 
     try {
-      const url = `/api/products?q=${encodeURIComponent(query)}&market=${encodeURIComponent(market.marketCode)}`;
-      const response = await authenticatedFetch(url, {
+      const categoryParam = category ? `&category=${encodeURIComponent(category)}` : '';
+      const url = `/api/products?q=${encodeURIComponent(query)}&market=${encodeURIComponent(market.marketCode)}${categoryParam}`;
+      const response = await effectiveFetch(url, {
         signal: abortController.signal,
       });
 
@@ -604,18 +667,17 @@ export default function TryOnWidget() {
         setProducts(data.products);
         setProductLoadStatus('ready');
         if (navigateOnFinish) {
-          showView('F');
+          showView('I');
         }
       } else {
         setProducts([]);
         setProductLoadStatus('empty');
         if (navigateOnFinish) {
-          showView('G3');
+          showView('J3');
         }
       }
     } catch (e: unknown) {
       if (e instanceof Error && e.name === 'AbortError') {
-        // Kontrolowane przerwanie: brak efektu ubocznego
         return;
       }
       if (sessionGen !== studioGenerationRef.current) return;
@@ -624,39 +686,41 @@ export default function TryOnWidget() {
     }
   };
 
-  // Obsługa przycisku przejścia do produktów na ekranie E
+  // Obsługa przycisku przejścia do produktów na ekranie H
   const handleViewProducts = () => {
     if (productLoadStatus === 'ready') {
-      showView('F');
+      showView('I');
     } else if (productLoadStatus === 'empty') {
-      showView('G3');
+      showView('J3');
     } else if (productLoadStatus === 'idle') {
       if (analysisResult?.apiQuery) {
-        fetchProductsForView(analysisResult.apiQuery, true);
+        fetchProductsForView(analysisResult.apiQuery, selectedCategory || undefined, true);
       }
     }
   };
 
   // Obsługa wirtualnej przymiarki VTON – bez fallbacku, z ochroną generacyjną i AbortController
   const handleTryOn = async (product: CanonicalProduct) => {
-    if (!personBase64 || isAppProcessing || isTryOnLoading) return;
+    const validation = validateTryOnPrerequisites({
+      personBase64,
+      isAppProcessing,
+      isTryOnLoading,
+      product,
+      replicateCategory: analysisResult?.replicateCategory,
+    });
 
-    if (!hasVerifiedTryOnAsset(product)) {
-      setTryOnError('Ten produkt nie jest obecnie dostępny do wirtualnej przymiarki.');
+    if (!validation.canProceed || !personBase64) {
+      if (validation.error) {
+        setTryOnError(validation.error);
+      }
       return;
     }
 
-    const clothingImageUrl = product.tryOnAsset?.image?.url;
-    const clothingTitle = product.title;
-
-    if (!clothingImageUrl || !clothingTitle || !clothingImageUrl.trim() || !clothingTitle.trim()) {
-      setTryOnError('Ten produkt nie jest obecnie dostępny do wirtualnej przymiarki.');
-      return;
-    }
+    const vtonCategory = validation.vtonCategory!;
+    const clothingImageUrl = product.tryOnAsset!.image.url;
 
     const sessionGen = studioGenerationRef.current;
 
-    // Anuluj poprzednie żądanie VTON
     if (tryOnAbortControllerRef.current) {
       tryOnAbortControllerRef.current.abort();
     }
@@ -674,31 +738,25 @@ export default function TryOnWidget() {
     setTryOnImage(null);
     setTryOnError(null);
 
-    let bodyModifier = analysisResult?.advice ? ` ${analysisResult.advice}` : '';
-    const shape = analysisResult?.bodyShape;
-    if (shape === 'JABŁKO') bodyModifier += ' +empire +maskująca talia +luźny obrys ciała';
-    else if (shape === 'GRUSZKA') bodyModifier += ' +rozkloszowana +balans biodra +podkreślona góra z wcięciem';
-    else if (shape === 'KLEPSYDRA') bodyModifier += ' +dopasowana +podkreśla talię +sylwetka opięta';
-    else if (shape === 'KOLUMNA') bodyModifier += ' +warstwowa +objętość +struktura geometryczna';
-    else if (shape === 'ROŻEK') bodyModifier += ' +rozkloszowana dół +uwypukla biodra';
-
-    const replicateCategory = analysisResult?.replicateCategory || 'upper_body';
-    const replicatePrompt = analysisResult?.replicatePrompt || '';
     const clientRequestId = crypto.randomUUID();
 
     try {
-      const response = await authenticatedFetch('/api/try-on', {
+      const tryOnPayload = buildClientTryOnRequestPayload({
+        requestId: clientRequestId,
+        personImage: personBase64,
+        clothingImageUrl,
+        category: vtonCategory,
+      });
+
+      const response = await effectiveFetch('/api/try-on', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         signal: abortController.signal,
         body: JSON.stringify({
           requestId: clientRequestId,
-          personImage: personBase64,
-          clothingImage: clothingImageUrl,
-          category: replicateCategory,
-          replicatePrompt: replicatePrompt,
-          productTitle: clothingTitle,
-          bodyTypeModifier: bodyModifier,
+          personImage: tryOnPayload.personImage,
+          clothingImage: tryOnPayload.clothingImage,
+          category: tryOnPayload.category,
         }),
       });
 
@@ -732,777 +790,1393 @@ export default function TryOnWidget() {
     }
   };
 
-  const isWideLayout = currentView === 'E' || currentView === 'F';
+  // Dynamiczne karty rekomendacji dla wybranej kategorii
+  const currentCategoryCuts = selectedCategory ? (CATEGORY_CUTS[selectedCategory] || [CATEGORY_FALLBACK_CUT[selectedCategory]]) : [];
+  const displayRecommendationCards: StyleRecommendationCard[] = currentCategoryCuts.slice(0, 3).map((cut, idx) => {
+    const isRecommendedCut = analysisResult?.recommendedCut === cut.id;
+    return {
+      id: cut.id,
+      title: cut.uiLabel,
+      reason: idx === 0 && analysisResult?.advice
+        ? analysisResult.advice
+        : `Krój ${cut.polishSearchTerm} harmonijnie współgra z proporcjami sylwetki przy wybranej okazji.`,
+      badges: isRecommendedCut ? ['Główny wybór stylistki', 'Harmonijna linia'] : ['Swoboda ruchu', 'Lekkość linii'],
+      tip: idx === 0 && analysisResult?.considerations
+        ? analysisResult.considerations
+        : 'Zwracaj uwagę na jakość i układanie się tkaniny w ruchu.',
+      category: cut.category,
+    };
+  });
 
-  // Rekomendacje krojów wyliczone deterministycznie na podstawie bodyShape
-  const recommendations = analysisResult
-    ? getRecommendations(analysisResult.bodyShape, analysisResult.garmentDetails)
-    : [];
+  // Obsługa klawiatury dla modalu
+  const openResetModal = (e?: React.MouseEvent<HTMLElement>) => {
+    resetModalOpenerRef.current = (e?.currentTarget as HTMLElement) || document.activeElement as HTMLElement;
+    setIsResetModalOpen(true);
+    setTimeout(() => {
+      resetModalCancelBtnRef.current?.focus();
+    }, 50);
+  };
 
-  // Bezpieczny nagłówek i opis (bez słowa "Unikaj")
-  const safeStrength =
-    analysisResult?.strength && !analysisResult.strength.toLowerCase().startsWith('unikaj')
-      ? analysisResult.strength
-      : 'Twoje proporcje dobrze współgrają z dobranymi fasonami';
+  const closeResetModal = () => {
+    setIsResetModalOpen(false);
+    if (resetModalOpenerRef.current) {
+      resetModalOpenerRef.current.focus();
+      resetModalOpenerRef.current = null;
+    }
+  };
 
-  const safeAdvice =
-    analysisResult?.advice && !analysisResult.advice.toLowerCase().startsWith('unikaj')
-      ? analysisResult.advice
-      : 'Na podstawie widocznych proporcji przygotowaliśmy propozycje krojów. Wybierz te, w których czujesz się najbardziej komfortowo.';
+  const handleModalKeydown = (e: ReactKeyboardEvent) => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      closeResetModal();
+      return;
+    }
+    if (e.key === 'Tab') {
+      const modal = document.getElementById('reset-modal');
+      if (!modal) return;
+      const focusable = Array.from(modal.querySelectorAll<HTMLElement>('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'));
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey) {
+        if (document.activeElement === first) {
+          e.preventDefault();
+          last?.focus();
+        }
+      } else {
+        if (document.activeElement === last) {
+          e.preventDefault();
+          first?.focus();
+        }
+      }
+    }
+  };
+
+  // Obsługa wyboru stylów (max 3)
+  const toggleStyle = (style: StylePreference) => {
+    if (selectedStyles.includes(style)) {
+      setSelectedStyles(selectedStyles.filter((s) => s !== style));
+    } else {
+      if (selectedStyles.length < 3) {
+        setSelectedStyles([...selectedStyles, style]);
+      }
+    }
+  };
+
+  // Flagi walidacji
+  const isOccasionValid =
+    selectedOccasion !== null &&
+    (selectedOccasion !== 'other' || (customOccasion.trim().length >= 2 && customOccasion.trim().length <= 80));
+
+  const isPhotoStepReady = selectedFile !== null && personBase64 !== null && consentChecked && !isImageProcessing;
 
   return (
-    <div className="w-full flex flex-col items-center">
-      {/* Główny kontener widoku */}
-      <div
-        className={`w-full mx-auto px-4 py-6 transition-all duration-300 ${
-          isWideLayout ? 'max-w-[1040px]' : 'max-w-[480px]'
-        }`}
-      >
-        {/* ========================================================= */}
-        {/* Ekran startowy Studio                                     */}
-        {/* ========================================================= */}
-        {currentView === 'A' && (
-          <div className="bg-white border border-[#EAE3D9] rounded-2xl p-6 shadow-xs flex flex-col items-center text-center">
-            <div className="inline-flex items-center gap-1.5 bg-[#FBEFF2] border border-[#E8D5DA] text-[#83223A] text-xs font-semibold px-3 py-1 rounded-full mb-3">
-              <span>✨</span> Analiza sylwetki i fasonów
-            </div>
-            <h1 className="text-xl font-bold text-[#242220] tracking-tight">
-              Odkryj fasony dopasowane do Twojej figury
-            </h1>
-            <p className="text-[#6B645C] text-sm mt-2 max-w-[380px] leading-relaxed">
-              Wgraj jedno zdjęcie sylwetki. Sztuczna inteligencja przeanalizuje proporcje i wskaże kroje ubrań, które najlepiej podkreślają Twoje naturalne atuty.
-            </p>
+    <div className="w-full flex flex-col items-center py-5 px-4 sm:px-6">
+      {/* SCOPED STYLES matching approved R3C prototype */}
+      <style>{`
+        .view-card {
+          width: 100%;
+          max-width: 480px;
+          background: #FFFFFF;
+          border: 1px solid #EAE3D9;
+          border-radius: 16px;
+          padding: 20px;
+          box-shadow: 0 1px 3px rgba(36, 34, 32, 0.05);
+          display: flex;
+          flex-direction: column;
+          position: relative;
+        }
+        @media (min-width: 900px) {
+          .view-card.desktop-split {
+            max-width: 1040px;
+            flex-direction: row;
+            padding: 0;
+            overflow: hidden;
+            align-items: stretch;
+          }
+          .view-card.desktop-split .form-col {
+            flex: 0 0 660px;
+            max-width: 660px;
+            padding: 32px 36px;
+            display: flex;
+            flex-direction: column;
+            border-right: 1px solid #EAE3D9;
+          }
+          .view-card.desktop-split .visual-col {
+            flex: 1;
+            min-width: 220px;
+            background: linear-gradient(160deg, #FAF0EF 0%, #F2E4EB 50%, #EDE3F0 100%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 32px 24px;
+            gap: 16px;
+          }
+        }
+        @media (max-width: 899px) {
+          .view-card.desktop-split .form-col {
+            width: 100%;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+          }
+          .view-card.desktop-split .visual-col {
+            display: none;
+          }
+        }
+        .view-card.wide-layout {
+          max-width: 1040px;
+          padding: 28px;
+        }
+        .btn-cta {
+          width: 100%;
+          min-height: 48px;
+          background: #83223A;
+          color: #FFFFFF;
+          border: none;
+          border-radius: 12px;
+          font-size: 14.5px;
+          font-weight: 600;
+          cursor: pointer;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          transition: all 0.15s ease;
+          box-shadow: 0 2px 8px rgba(131, 34, 58, 0.2);
+          text-decoration: none;
+          margin-top: 14px;
+        }
+        .btn-cta:hover:not(:disabled) {
+          background: #6D1B2F;
+          box-shadow: 0 4px 12px rgba(131, 34, 58, 0.3);
+        }
+        .btn-cta:disabled {
+          background: #D3CBC4;
+          color: #7D756E;
+          cursor: not-allowed;
+          box-shadow: none;
+        }
+        .btn-secondary {
+          width: 100%;
+          min-height: 48px;
+          background: #FFFFFF;
+          color: #242220;
+          border: 1px solid #D5CCC0;
+          border-radius: 12px;
+          font-size: 13.5px;
+          font-weight: 600;
+          cursor: pointer;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 6px;
+          transition: all 0.15s ease;
+          margin-top: 8px;
+        }
+        .btn-secondary:hover {
+          background: #FAF7F2;
+        }
+        .btn-text-back {
+          background: transparent;
+          border: none;
+          color: #8F867D;
+          font-size: 12.5px;
+          font-weight: 500;
+          cursor: pointer;
+          margin-top: 10px;
+          padding: 4px;
+          align-self: center;
+          transition: color 0.15s;
+        }
+        .btn-text-back:hover {
+          color: #242220;
+          text-decoration: underline;
+        }
+        .option-card {
+          border: 1.5px solid #EAE3D9;
+          background: #FAF7F2;
+          border-radius: 12px;
+          padding: 10px 12px;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          cursor: pointer;
+          transition: all 0.15s ease;
+          user-select: none;
+          position: relative;
+        }
+        .option-card:hover {
+          border-color: #E8D5DA;
+          background: #FFFFFF;
+        }
+        .option-card.selected {
+          border-color: #83223A;
+          background: #FBEFF2;
+        }
+        .option-card:focus-visible {
+          outline: 2px solid #83223A;
+          outline-offset: 2px;
+        }
+        .style-chip {
+          border: 1.5px solid #EAE3D9;
+          background: #FAF7F2;
+          border-radius: 12px;
+          padding: 9px 11px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 6px;
+          cursor: pointer;
+          user-select: none;
+          transition: all 0.15s ease;
+          font-size: 12.5px;
+          font-weight: 600;
+          color: #242220;
+        }
+        .style-chip:hover {
+          border-color: #E8D5DA;
+          background: #FFFFFF;
+        }
+        .style-chip.selected {
+          border-color: #83223A;
+          background: #FBEFF2;
+          color: #83223A;
+        }
+        .style-chip.disabled {
+          opacity: 0.45;
+          cursor: not-allowed;
+          border-color: #EAE3D9;
+          background: #FAF7F2;
+        }
+        .style-chip:focus-visible {
+          outline: 2px solid #83223A;
+          outline-offset: 2px;
+        }
+        .upload-box {
+          border: 2px dashed #D5CCC0;
+          background: #FAF7F2;
+          border-radius: 12px;
+          padding: 16px 14px;
+          text-align: center;
+          cursor: pointer;
+          transition: all 0.15s ease;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 6px;
+          margin: 10px 0;
+          width: 100%;
+        }
+        .upload-box:hover {
+          border-color: #83223A;
+          background: #FFFFFF;
+        }
+        .upload-box:focus-within {
+          border-color: #83223A;
+          outline: 2px solid #83223A;
+          outline-offset: 2px;
+        }
+        .loader-pulse {
+          width: 48px;
+          height: 48px;
+          border-radius: 50%;
+          background: #FBEFF2;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          margin: 20px auto 16px;
+        }
+        .loader-dot {
+          width: 18px;
+          height: 18px;
+          border-radius: 50%;
+          background: #83223A;
+          animation: pulseAnim 1.4s ease-in-out infinite;
+        }
+        @keyframes pulseAnim {
+          0% { transform: scale(0.8); opacity: 0.6; }
+          50% { transform: scale(1.15); opacity: 1; }
+          100% { transform: scale(0.8); opacity: 0.6; }
+        }
+      `}</style>
 
-            <div className="w-full bg-[#FAF7F2] border border-[#EAE3D9] rounded-xl p-3.5 my-5 text-left flex flex-col gap-2.5">
-              <div className="flex items-center gap-2.5 text-xs text-[#242220]">
-                <span className="w-5 h-5 rounded-full bg-[#83223A]/10 text-[#83223A] font-bold flex items-center justify-center shrink-0 text-[11px]">
-                  1
-                </span>
-                <span>Jedno zdjęcie całej sylwetki w naturalnej pozie</span>
-              </div>
-              <div className="flex items-center gap-2.5 text-xs text-[#242220]">
-                <span className="w-5 h-5 rounded-full bg-[#83223A]/10 text-[#83223A] font-bold flex items-center justify-center shrink-0 text-[11px]">
-                  2
-                </span>
-                <span>Konkretne rekomendacje krojów z uzasadnieniem</span>
-              </div>
-              <div className="flex items-center gap-2.5 text-xs text-[#242220]">
-                <span className="w-5 h-5 rounded-full bg-[#83223A]/10 text-[#83223A] font-bold flex items-center justify-center shrink-0 text-[11px]">
-                  3
-                </span>
-                <span>Propozycje ubrań odpowiadające fasonom</span>
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => showView('B')}
-              className="w-full min-h-[48px] bg-[#83223A] hover:bg-[#6D1B2F] text-white font-semibold text-sm rounded-xl transition-all shadow-md active:scale-[0.99] flex items-center justify-center"
-            >
-              Rozpocznij analizę sylwetki
-            </button>
-            <p className="text-[11.5px] text-[#8F867D] mt-3">
-              Zdjęcie zostanie użyte do przygotowania analizy sylwetki. Szczegóły przetwarzania znajdziesz w Polityce prywatności.
-            </p>
-          </div>
-        )}
-
-        {/* ========================================================= */}
-        {/* Instrukcja przygotowania zdjęcia                          */}
-        {/* ========================================================= */}
-        {currentView === 'B' && (
-          <div className="bg-white border border-[#EAE3D9] rounded-2xl p-6 shadow-xs flex flex-col">
-            <h2 className="text-[17px] font-bold text-[#242220] tracking-tight">
-              Jak przygotować dobre zdjęcie?
-            </h2>
-            <p className="text-[#6B645C] text-xs mt-1">
-              Im lepiej widoczne są proporcje sylwetki, tym trafniejsze będą rekomendacje.
-            </p>
-
-            <div className="flex flex-col gap-3 my-4">
-              <div className="border border-[#EAE3D9] rounded-xl p-3 bg-[#FAF7F2] flex gap-3 items-start">
-                <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center font-bold text-sm shrink-0 border border-emerald-200">
-                  ✓
-                </div>
-                <div>
-                  <h4 className="text-xs font-bold text-[#242220]">Cała postać w kadrze</h4>
-                  <p className="text-[11.5px] text-[#6B645C] mt-0.5 leading-snug">
-                    Stań prosto, przodem do aparatu, tak aby widoczne były ramiona, talia i biodra.
-                  </p>
-                </div>
-              </div>
-
-              <div className="border border-[#EAE3D9] rounded-xl p-3 bg-[#FAF7F2] flex gap-3 items-start">
-                <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center font-bold text-sm shrink-0 border border-emerald-200">
-                  ✓
-                </div>
-                <div>
-                  <h4 className="text-xs font-bold text-[#242220]">Dobre oświetlenie</h4>
-                  <p className="text-[11.5px] text-[#6B645C] mt-0.5 leading-snug">
-                    Najlepiej sprawdza się światło dzienne bez mocnych cieni z boku.
-                  </p>
-                </div>
-              </div>
-
-              <div className="border border-[#EAE3D9] rounded-xl p-3 bg-[#FAF7F2] flex gap-3 items-start">
-                <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center font-bold text-sm shrink-0 border border-emerald-200">
-                  ✓
-                </div>
-                <div>
-                  <h4 className="text-xs font-bold text-[#242220]">Ubranie przylegające</h4>
-                  <p className="text-[11.5px] text-[#6B645C] mt-0.5 leading-snug">
-                    Unikaj obszernych kurtek i puchowych płaszczy maskujących naturalne proporcje.
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => showView('C')}
-              className="w-full min-h-[48px] bg-[#83223A] hover:bg-[#6D1B2F] text-white font-semibold text-sm rounded-xl transition-all shadow-md active:scale-[0.99] flex items-center justify-center"
-            >
-              Przejdź do wyboru zdjęcia
-            </button>
-            <button
-              type="button"
-              onClick={() => showView('A')}
-              className="w-full text-xs text-[#8F867D] hover:text-[#242220] mt-3 py-1 font-medium transition-colors"
-            >
-              Wróć do ekranu startowego
-            </button>
-          </div>
-        )}
-
-        {/* ========================================================= */}
-        {/* WIDOK C: Wgranie i zgoda                                  */}
-        {/* ========================================================= */}
-        {currentView === 'C' && (
-          <div className="bg-white border border-[#EAE3D9] rounded-2xl p-6 shadow-xs flex flex-col">
-            <h2 className="text-[17px] font-bold text-[#242220] tracking-tight">
-              Wgraj zdjęcie sylwetki
-            </h2>
-            <p className="text-[#6B645C] text-xs mt-1">
-              Wybierz plik ze swojego urządzenia (JPG, PNG lub WEBP, do 10 MB).
-            </p>
-
-            {/* Obszar wyboru pliku w formie dostępnego label */}
-            <div className="my-4">
-              <label
-                htmlFor="studio-photo-input"
-                className="w-full min-h-[220px] border-2 border-dashed border-[#D5CCC0] hover:border-[#83223A] bg-[#FAF7F2] rounded-2xl flex flex-col items-center justify-center p-6 text-center cursor-pointer transition-colors relative"
-              >
-                <input
-                  ref={fileInputRef}
-                  id="studio-photo-input"
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp"
-                  onChange={handleFileChange}
-                  className="sr-only"
-                />
-
-                {previewUrl ? (
-                  <div className="flex flex-col items-center gap-2">
-                    <img
-                      src={previewUrl}
-                      alt="Podgląd wybranego zdjęcia"
-                      className="max-h-[160px] rounded-xl object-contain shadow-xs"
-                    />
-                    <span className="text-xs font-semibold text-[#83223A] mt-1">
-                      Zmień wybrane zdjęcie
-                    </span>
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center gap-2">
-                    <div
-                      className="w-12 h-12 rounded-full bg-[#FBEFF2] text-[#83223A] flex items-center justify-center text-xl mb-1"
-                      aria-hidden="true"
-                    >
-                      📷
-                    </div>
-                    <span className="text-xs font-bold text-[#242220]">
-                      Kliknij, aby wybrać zdjęcie
-                    </span>
-                    <span className="text-[11px] text-[#8F867D]">
-                      JPG, PNG, WEBP (maks. 10 MB)
-                    </span>
-                  </div>
-                )}
-              </label>
-
-              {/* Komunikat o błędzie pliku */}
-              {fileError && (
-                <div role="alert" className="mt-2 p-2.5 bg-[#FDF2F4] border border-[#F3CAD2] rounded-xl text-left">
-                  <p className="text-xs text-[#9E1C38] font-medium leading-snug">
-                    {fileError}
-                  </p>
-                </div>
-              )}
-
-              {/* Loader przetwarzania zdjęcia w pamięci */}
-              {isImageProcessing && (
-                <div role="status" aria-live="polite" className="mt-2 flex items-center justify-center gap-2 text-xs text-[#83223A]">
-                  <Loader2 className="animate-spin motion-reduce:animate-none" size={16} aria-hidden="true" focusable="false" />
-                  <span>Optymalizacja zdjęcia...</span>
-                </div>
-              )}
-            </div>
-
-            {/* Checkbox zgody */}
-            <div className="flex items-start gap-2.5 mt-2 bg-[#FAF7F2] border border-[#EAE3D9] p-3 rounded-xl">
-              <input
-                type="checkbox"
-                id="consentCheckbox"
-                checked={consentChecked}
-                onChange={(e) => setConsentChecked(e.target.checked)}
-                className="w-5 h-5 accent-[#83223A] mt-0.5 shrink-0 cursor-pointer"
-              />
-              <label htmlFor="consentCheckbox" className="text-[11.5px] text-[#242220] leading-snug cursor-pointer">
-                Wyrażam zgodę na przesłanie zdjęcia do usługi Google Gemini w celu jednorazowej analizy sylwetki i przygotowania rekomendacji fasonów.
-              </label>
-            </div>
-            <p className="text-[11px] text-[#8F867D] mt-2 px-1 leading-normal">
-              Analiza może obejmować cechy widoczne na zdjęciu, takie jak proporcje sylwetki i ułożenie ubrania.
-            </p>
-
-            {/* Przycisk CTA: Zaloguj się lub Rozpocznij */}
-            <div className="mt-4">
-              <button
-                type="button"
-                id="btnSubmitConsent"
-                disabled={
-                  !selectedFile ||
-                  !personBase64 ||
-                  !consentChecked ||
-                  isImageProcessing ||
-                  isAnalysisLoading ||
-                  isSigningIn
-                }
-                onClick={handleStartAnalysis}
-                className="w-full min-h-[48px] bg-[#83223A] hover:bg-[#6D1B2F] text-white font-semibold text-sm rounded-xl transition-all shadow-md active:scale-[0.99] flex items-center justify-center disabled:bg-[#D3CBC4] disabled:text-[#7D756E] disabled:cursor-not-allowed disabled:shadow-none"
-              >
-                {isSigningIn ? (
-                  <>
-                    <Loader2 className="animate-spin mr-2 motion-reduce:animate-none" size={18} aria-hidden="true" focusable="false" />
-                    Logowanie przez Google...
-                  </>
-                ) : isAnalysisLoading ? (
-                  <>
-                    <Loader2 className="animate-spin mr-2 motion-reduce:animate-none" size={18} aria-hidden="true" focusable="false" />
-                    Przygotowywanie analizy...
-                  </>
-                ) : user ? (
-                  'Rozpocznij analizę'
-                ) : (
-                  'Zaloguj się i rozpocznij analizę'
-                )}
-              </button>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => showView('B')}
-              className="w-full text-xs text-[#8F867D] hover:text-[#242220] mt-3 py-1 font-medium transition-colors"
-            >
-              Wróć do instrukcji zdjęcia
-            </button>
-          </div>
-        )}
-
-        {/* ========================================================= */}
-        {/* WIDOK D: Oczekiwanie na wynik                             */}
-        {/* ========================================================= */}
-        {currentView === 'D' && (
-          <div
-            role="status"
-            aria-live="polite"
-            className="bg-white border border-[#EAE3D9] rounded-2xl p-9 text-center shadow-xs flex flex-col items-center"
-          >
-            <div className="w-14 h-14 rounded-full bg-[#FBEFF2] flex items-center justify-center mb-5 relative">
+      {/* STEPPER (Widoki B do I) */}
+      {currentView !== 'A' && (
+        <div className="w-full bg-[#FFFFFF] border-b border-[#EAE3D9] py-2.5 px-4 mb-5" id="app-stepper">
+          <div className="max-w-[640px] mx-auto flex items-center justify-between relative">
+            <div className="absolute top-3 left-[12%] right-[12%] h-[2px] bg-[#EAE3D9] z-0" />
+            <div
+              className="absolute top-3 left-[12%] h-[2px] bg-[#83223A] z-0 transition-all duration-300"
+              style={{
+                width:
+                  currentView === 'B' || currentView === 'C'
+                    ? '0%'
+                    : currentView === 'D'
+                    ? '33%'
+                    : currentView === 'E' || currentView === 'F' || currentView === 'G'
+                    ? '66%'
+                    : '100%',
+              }}
+            />
+            {/* Węzeł 1 */}
+            <div className="flex flex-col items-center gap-1 relative z-10 flex-1">
               <div
-                className="w-5 h-5 rounded-full bg-[#83223A] animate-pulse motion-reduce:animate-none"
-                aria-hidden="true"
-              />
+                className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold border-2 transition-all ${
+                  ['B', 'C'].includes(currentView)
+                    ? 'bg-[#83223A] border-[#83223A] text-white ring-4 ring-[#FBEFF2]'
+                    : ['D', 'E', 'F', 'G', 'H', 'I', 'J1', 'J2', 'J3'].includes(currentView)
+                    ? 'bg-[#FBEFF2] border-[#83223A] text-[#83223A]'
+                    : 'bg-[#F4EFEB] border-[#D5CCC0] text-[#6B645C]'
+                }`}
+              >
+                1
+              </div>
+              <span className={`text-[11px] font-semibold ${['B', 'C'].includes(currentView) ? 'text-[#83223A]' : 'text-[#6B645C]'}`}>
+                Potrzeby
+              </span>
             </div>
-            <h2 className="text-[17px] font-bold text-[#242220] tracking-tight">
-              Przygotowujemy Twoje rekomendacje
-            </h2>
-            <p className="text-[13.5px] text-[#242220] font-medium mt-2.5">
-              Analiza może potrwać chwilę. Pozostań na tej stronie.
-            </p>
-            <p className="text-[12px] text-[#6B645C] max-w-[320px] mt-2">
-              Po zakończeniu pokażemy fasony, które mogą dobrze współgrać z Twoją sylwetką.
-            </p>
-            <span className="sr-only">Trwa analiza sylwetki...</span>
+            {/* Węzeł 2 */}
+            <div className="flex flex-col items-center gap-1 relative z-10 flex-1">
+              <div
+                className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold border-2 transition-all ${
+                  currentView === 'D'
+                    ? 'bg-[#83223A] border-[#83223A] text-white ring-4 ring-[#FBEFF2]'
+                    : ['E', 'F', 'G', 'H', 'I', 'J1', 'J2', 'J3'].includes(currentView)
+                    ? 'bg-[#FBEFF2] border-[#83223A] text-[#83223A]'
+                    : 'bg-[#F4EFEB] border-[#D5CCC0] text-[#6B645C]'
+                }`}
+              >
+                2
+              </div>
+              <span className={`text-[11px] font-semibold ${currentView === 'D' ? 'text-[#83223A]' : 'text-[#6B645C]'}`}>
+                Styl
+              </span>
+            </div>
+            {/* Węzeł 3 */}
+            <div className="flex flex-col items-center gap-1 relative z-10 flex-1">
+              <div
+                className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold border-2 transition-all ${
+                  ['E', 'F', 'G', 'J1', 'J2'].includes(currentView)
+                    ? 'bg-[#83223A] border-[#83223A] text-white ring-4 ring-[#FBEFF2]'
+                    : ['H', 'I', 'J3'].includes(currentView)
+                    ? 'bg-[#FBEFF2] border-[#83223A] text-[#83223A]'
+                    : 'bg-[#F4EFEB] border-[#D5CCC0] text-[#6B645C]'
+                }`}
+              >
+                3
+              </div>
+              <span className={`text-[11px] font-semibold ${['E', 'F', 'G'].includes(currentView) ? 'text-[#83223A]' : 'text-[#6B645C]'}`}>
+                Zdjęcie
+              </span>
+            </div>
+            {/* Węzeł 4 */}
+            <div className="flex flex-col items-center gap-1 relative z-10 flex-1">
+              <div
+                className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold border-2 transition-all ${
+                  ['H', 'I', 'J3'].includes(currentView)
+                    ? 'bg-[#83223A] border-[#83223A] text-white ring-4 ring-[#FBEFF2]'
+                    : 'bg-[#F4EFEB] border-[#D5CCC0] text-[#6B645C]'
+                }`}
+              >
+                4
+              </div>
+              <span className={`text-[11px] font-semibold ${['H', 'I'].includes(currentView) ? 'text-[#83223A]' : 'text-[#6B645C]'}`}>
+                Rekomendacje
+              </span>
+            </div>
           </div>
-        )}
+        </div>
+      )}
 
-        {/* ========================================================= */}
-        {/* WIDOK E: Rekomendacje krojów z dynamiczną mapą fasonów   */}
-        {/* ========================================================= */}
-        {currentView === 'E' && (
-          <div className="flex flex-col gap-4">
-            <div className="bg-[#FBEFF2] border border-[#E8D5DA] rounded-xl p-3.5 max-w-[740px] mx-auto w-full">
-              <h2 className="text-[16px] font-bold text-[#242220] leading-snug">
-                {safeStrength}
-              </h2>
-              <p className="text-[12px] text-[#242220] mt-1.5 leading-relaxed">
-                {safeAdvice}
+      {/* ========================================================= */}
+      {/* WIDOK A — START                                           */}
+      {/* ========================================================= */}
+      {currentView === 'A' && (
+        <section className="view-card desktop-split" id="view-A" aria-labelledby="title-A">
+          <div className="form-col">
+            <div className="inline-flex items-center gap-1.5 bg-[#FBEFF2] text-[#83223A] border border-[#E8D5DA] text-xs font-semibold px-3 py-1 rounded-full mb-2.5 self-center">
+              ✨ Osobista Stylistka AI
+            </div>
+            <h1 className="text-xl font-bold text-[#242220] tracking-tight text-center leading-snug" id="title-A">
+              Znajdź fasony stworzone dla Ciebie
+            </h1>
+            <p className="text-[13px] text-[#6B645C] mt-1.5 text-center leading-relaxed">
+              Powiedz nam, czego szukasz, a następnie dodaj zdjęcie sylwetki. Przygotujemy inspiracje dopasowane do Twoich proporcji, okazji i stylu.
+            </p>
+
+            <div className="bg-[#FAF7F2] border border-[#EAE3D9] rounded-xl p-3 my-3.5 flex flex-col gap-2">
+              <div className="flex items-center gap-2.5 text-xs text-[#242220]">
+                <span className="w-5 h-5 rounded-full bg-[#FBEFF2] text-[#83223A] font-bold flex items-center justify-center text-[10.5px] shrink-0">1</span>
+                <span>Określ kategorię, okazję i swoje preferencje</span>
+              </div>
+              <div className="flex items-center gap-2.5 text-xs text-[#242220]">
+                <span className="w-5 h-5 rounded-full bg-[#FBEFF2] text-[#83223A] font-bold flex items-center justify-center text-[10.5px] shrink-0">2</span>
+                <span>Wgraj jedno zdjęcie całej sylwetki w naturalnej pozie</span>
+              </div>
+              <div className="flex items-center gap-2.5 text-xs text-[#242220]">
+                <span className="w-5 h-5 rounded-full bg-[#FBEFF2] text-[#83223A] font-bold flex items-center justify-center text-[10.5px] shrink-0">3</span>
+                <span>Odbierz spersonalizowane rekomendacje fasonów i ubrań</span>
+              </div>
+            </div>
+
+            <button type="button" className="btn-cta" id="cta-view-A" onClick={() => showView('B')}>
+              Zaczynamy
+            </button>
+
+            <p className="text-[11px] text-[#8F867D] text-center mt-2.5 leading-normal">
+              Przed analizą wybierasz swoje preferencje i decydujesz o udostępnieniu zdjęcia.
+            </p>
+          </div>
+
+          <div className="visual-col" aria-hidden="true">
+            <div className="text-[15px] font-bold text-[#83223A] text-center leading-snug">
+              Twój styl,<br />Twoje proporcje
+              <small className="block text-[11px] font-normal text-[#8F867D] mt-1">Rekomendacje dopasowane do Ciebie</small>
+            </div>
+            <svg width="120" height="170" viewBox="0 0 140 220" fill="none" focusable="false">
+              <ellipse cx="70" cy="22" rx="10" ry="13" fill="#E8DDD3" />
+              <path d="M46 40L28 68L42 76L56 54L46 40Z" fill="#88203B" />
+              <path d="M94 40L112 68L98 76L84 54L94 40Z" fill="#88203B" />
+              <path d="M52 38L70 96H88L88 54L94 38H52Z" fill="#83223A" />
+              <path d="M88 38L64 96H80L94 38H88Z" fill="#9E2A4B" />
+              <rect x="52" y="94" width="36" height="8" rx="2" fill="#5C1022" />
+              <path d="M52 102L38 210H102L88 102H52Z" fill="#83223A" />
+            </svg>
+            <div className="flex flex-col gap-2.5 w-full max-w-[210px]">
+              <div className="flex items-start gap-2.5 text-xs text-[#6B645C]">
+                <div className="w-7 h-7 rounded-lg bg-[#FBEFF2] text-[#83223A] flex items-center justify-center shrink-0">✨</div>
+                <div><strong className="block text-[#242220] font-bold">Analiza sylwetki</strong>Algorytm dopasowuje fasony do Twoich proporcji.</div>
+              </div>
+              <div className="flex items-start gap-2.5 text-xs text-[#6B645C]">
+                <div className="w-7 h-7 rounded-lg bg-[#FBEFF2] text-[#83223A] flex items-center justify-center shrink-0">🎯</div>
+                <div><strong className="block text-[#242220] font-bold">Okazja i styl</strong>Wybierz kontekst, a my dobierzemy formalność kroju.</div>
+              </div>
+              <div className="flex items-start gap-2.5 text-xs text-[#6B645C]">
+                <div className="w-7 h-7 rounded-lg bg-[#FBEFF2] text-[#83223A] flex items-center justify-center shrink-0">🔒</div>
+                <div><strong className="block text-[#242220] font-bold">Świadoma zgoda</strong>Przed rozpoczęciem analizy zobaczysz informację o przetwarzaniu zdjęcia i zdecydujesz, czy chcesz kontynuować.</div>
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* ========================================================= */}
+      {/* WIDOK B — CZEGO SZUKASZ? (KATEGORIA)                      */}
+      {/* ========================================================= */}
+      {currentView === 'B' && (
+        <section className="view-card desktop-split" id="view-B" aria-labelledby="title-B">
+          <div className="form-col">
+            <div className="inline-flex items-center gap-1.5 bg-[#FBEFF2] text-[#83223A] border border-[#E8D5DA] text-xs font-semibold px-3 py-1 rounded-full mb-2.5 self-center">
+              Krok 1 z 3 • Potrzeby
+            </div>
+            <h2 className="text-xl font-bold text-[#242220] tracking-tight text-center" id="title-B">
+              Czego szukasz?
+            </h2>
+            <p className="text-[13px] text-[#6B645C] mt-1.5 text-center leading-relaxed">
+              Wybierz jedną kategorię ubrania, dla której przygotujemy rekomendacje fasonów.
+            </p>
+
+            <div
+              className="grid grid-cols-1 md:grid-cols-2 gap-2 my-4 w-full"
+              id="category-options"
+              role="radiogroup"
+              aria-labelledby="title-B"
+            >
+              {CLOTHING_CATEGORIES.map((catKey) => {
+                const isSelected = selectedCategory === catKey;
+                const iconMap: Record<ClothingCategory, string> = {
+                  dresses: '👗',
+                  tops: '👚',
+                  skirts: '🩰',
+                  pants: '👖',
+                  blazers: '🧥',
+                  outerwear: '🧣',
+                  full_outfit: '✨',
+                };
+                return (
+                  <div
+                    key={catKey}
+                    className={`option-card ${isSelected ? 'selected' : ''}`}
+                    role="radio"
+                    aria-checked={isSelected ? 'true' : 'false'}
+                    tabIndex={isSelected ? 0 : 0}
+                    data-value={catKey}
+                    onClick={() => setSelectedCategory(catKey)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        setSelectedCategory(catKey);
+                      }
+                    }}
+                  >
+                    <div className="w-8 h-8 rounded-lg bg-white border border-[#EAE3D9] flex items-center justify-center text-sm shrink-0">
+                      {iconMap[catKey]}
+                    </div>
+                    <span className="text-[13px] font-semibold text-[#242220] flex-1">{CATEGORY_NAMES[catKey]}</span>
+                    <div className={`w-[18px] h-[18px] rounded-full border-[1.5px] flex items-center justify-center shrink-0 ${isSelected ? 'border-[#83223A] bg-[#83223A]' : 'border-[#D5CCC0] bg-white'}`}>
+                      {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <button
+              type="button"
+              className="btn-cta"
+              id="cta-view-B"
+              disabled={!selectedCategory}
+              onClick={() => showView('C')}
+            >
+              Dalej
+            </button>
+            <button type="button" className="btn-text-back" onClick={() => showView('A')}>
+              ← Wróć do powitania
+            </button>
+          </div>
+
+          <div className="visual-col" aria-hidden="true">
+            <div className="text-[15px] font-bold text-[#83223A] text-center leading-snug">
+              Krok 1 z 3<small className="block text-[11px] font-normal text-[#8F867D] mt-1">Wybierz kategorię ubrania</small>
+            </div>
+            <div className="flex flex-col gap-2 w-full max-w-[200px]">
+              <div className="flex items-start gap-2.5 text-xs text-[#6B645C]">
+                <div className="w-7 h-7 rounded-lg bg-[#FBEFF2] text-[#83223A] flex items-center justify-center shrink-0">👗</div>
+                <div><strong className="block text-[#242220] font-bold">7 kategorii</strong>Od sukienek po płaszcze.</div>
+              </div>
+              <div className="flex items-start gap-2.5 text-xs text-[#6B645C]">
+                <div className="w-7 h-7 rounded-lg bg-[#FBEFF2] text-[#83223A] flex items-center justify-center shrink-0">🎯</div>
+                <div><strong className="block text-[#242220] font-bold">Jeden wybór</strong>Skup się na tym, czego szukasz.</div>
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* ========================================================= */}
+      {/* WIDOK C — NA JAKĄ OKAZJĘ?                                 */}
+      {/* ========================================================= */}
+      {currentView === 'C' && (
+        <section className="view-card desktop-split" id="view-C" aria-labelledby="title-C">
+          <div className="form-col">
+            <div className="inline-flex items-center gap-1.5 bg-[#FBEFF2] text-[#83223A] border border-[#E8D5DA] text-xs font-semibold px-3 py-1 rounded-full mb-2.5 self-center">
+              Krok 1 z 3 • Kontekst
+            </div>
+            <h2 className="text-xl font-bold text-[#242220] tracking-tight text-center" id="title-C">
+              Na jaką okazję?
+            </h2>
+            <p className="text-[13px] text-[#6B645C] mt-1.5 text-center leading-relaxed">
+              Okazja pozwala nam dobrać fasony o odpowiednim stopniu formalności i swobody.
+            </p>
+
+            <div
+              className="grid grid-cols-1 md:grid-cols-2 gap-2 my-4 w-full"
+              id="occasion-options"
+              role="radiogroup"
+              aria-labelledby="title-C"
+            >
+              {OCCASIONS.map((occKey) => {
+                const isSelected = selectedOccasion === occKey;
+                const iconMap: Record<Occasion, string> = {
+                  daily: '☕',
+                  work: '💼',
+                  date_evening: '🍸',
+                  wedding_party: '🥂',
+                  business_formal: '🤝',
+                  vacation: '🌴',
+                  other: '✏️',
+                };
+                return (
+                  <div
+                    key={occKey}
+                    className={`option-card ${isSelected ? 'selected' : ''}`}
+                    role="radio"
+                    aria-checked={isSelected ? 'true' : 'false'}
+                    tabIndex={isSelected ? 0 : 0}
+                    data-value={occKey}
+                    onClick={() => setSelectedOccasion(occKey)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        setSelectedOccasion(occKey);
+                      }
+                    }}
+                  >
+                    <div className="w-8 h-8 rounded-lg bg-white border border-[#EAE3D9] flex items-center justify-center text-sm shrink-0">
+                      {iconMap[occKey]}
+                    </div>
+                    <span className="text-[13px] font-semibold text-[#242220] flex-1">{OCCASION_NAMES[occKey]}</span>
+                    <div className={`w-[18px] h-[18px] rounded-full border-[1.5px] flex items-center justify-center shrink-0 ${isSelected ? 'border-[#83223A] bg-[#83223A]' : 'border-[#D5CCC0] bg-white'}`}>
+                      {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {selectedOccasion === 'other' && (
+              <div className="w-full flex flex-col gap-1.5 mt-2" id="custom-occasion-box">
+                <label htmlFor="custom-occasion-input" className="text-xs font-semibold text-[#242220] flex justify-between">
+                  <span>Opisz okazję (wymagane)</span>
+                  <span className="text-[11px] text-[#8F867D] font-normal" id="custom-occasion-counter">
+                    {customOccasion.length} / 80
+                  </span>
+                </label>
+                <input
+                  type="text"
+                  id="custom-occasion-input"
+                  className="w-full border-[1.5px] border-[#D5CCC0] rounded-lg p-2.5 text-sm bg-white focus:border-[#83223A] focus:outline-none focus:ring-2 focus:ring-[#FBEFF2]"
+                  placeholder="Np. chrzciny, obrona pracy magisterskiej, teatr..."
+                  maxLength={80}
+                  value={customOccasion}
+                  onChange={(e) => {
+                    const sanitized = sanitizeUserText(e.target.value, 80);
+                    setCustomOccasion(sanitized);
+                  }}
+                />
+                {customOccasion.length > 0 && (customOccasion.trim().length < 2 || customOccasion.trim().length > 80) && (
+                  <div className="text-[#9E1C38] text-[11px]" id="custom-occasion-error">
+                    Wpisz od 2 do 80 znaków (tekst nie może zawierać wyłącznie spacji).
+                  </div>
+                )}
+              </div>
+            )}
+
+            <button
+              type="button"
+              className="btn-cta"
+              id="cta-view-C"
+              disabled={!isOccasionValid}
+              onClick={() => showView('D')}
+            >
+              Dalej
+            </button>
+            <button type="button" className="btn-text-back" onClick={() => showView('B')}>
+              ← Wróć do wyboru kategorii
+            </button>
+          </div>
+
+          <div className="visual-col" aria-hidden="true">
+            <div className="text-[15px] font-bold text-[#83223A] text-center leading-snug">
+              Krok 1 z 3<small className="block text-[11px] font-normal text-[#8F867D] mt-1">Dobieramy formalność kroju do okazji</small>
+            </div>
+            <div className="flex flex-col gap-2 w-full max-w-[200px]">
+              <div className="flex items-start gap-2.5 text-xs text-[#6B645C]">
+                <div className="w-7 h-7 rounded-lg bg-[#FBEFF2] text-[#83223A] flex items-center justify-center shrink-0">🥂</div>
+                <div><strong className="block text-[#242220] font-bold">7 okazji</strong>Od codziennych po uroczyste.</div>
+              </div>
+              <div className="flex items-start gap-2.5 text-xs text-[#6B645C]">
+                <div className="w-7 h-7 rounded-lg bg-[#FBEFF2] text-[#83223A] flex items-center justify-center shrink-0">✏️</div>
+                <div><strong className="block text-[#242220] font-bold">Własna okazja</strong>Wpisz swoją, jeśli nie ma na liście.</div>
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* ========================================================= */}
+      {/* WIDOK D — TWÓJ STYL                                       */}
+      {/* ========================================================= */}
+      {currentView === 'D' && (
+        <section className="view-card desktop-split" id="view-D" aria-labelledby="title-D">
+          <div className="form-col">
+            <div className="inline-flex items-center gap-1.5 bg-[#FBEFF2] text-[#83223A] border border-[#E8D5DA] text-xs font-semibold px-3 py-1 rounded-full mb-2.5 self-center">
+              Krok 2 z 3 • Styl i preferencje
+            </div>
+            <h2 className="text-xl font-bold text-[#242220] tracking-tight text-center" id="title-D">
+              Twój styl
+            </h2>
+            <p className="text-[13px] text-[#6B645C] mt-1.5 text-center leading-relaxed">
+              Wybierz do 3 preferowanych stylów (opcjonalnie) oraz dodaj ewentualne wskazówki.
+            </p>
+
+            <div
+              className="grid grid-cols-2 md:grid-cols-4 gap-2 my-3.5 w-full"
+              id="style-options"
+              role="group"
+              aria-labelledby="title-D"
+            >
+              {STYLE_PREFERENCES.map((styleKey) => {
+                const isSelected = selectedStyles.includes(styleKey);
+                const isDisabled = selectedStyles.length >= 3 && !isSelected;
+                return (
+                  <div
+                    key={styleKey}
+                    className={`style-chip ${isSelected ? 'selected' : ''} ${isDisabled ? 'disabled' : ''}`}
+                    role="checkbox"
+                    aria-checked={isSelected ? 'true' : 'false'}
+                    aria-disabled={isDisabled ? 'true' : 'false'}
+                    tabIndex={0}
+                    data-value={styleKey}
+                    onClick={() => {
+                      if (!isDisabled) toggleStyle(styleKey);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        if (!isDisabled) toggleStyle(styleKey);
+                      }
+                    }}
+                  >
+                    <span>{STYLE_NAMES[styleKey]}</span>
+                    <div className={`w-4 h-4 rounded border flex items-center justify-center text-[10px] font-bold shrink-0 ${isSelected ? 'border-[#83223A] bg-[#83223A] text-white' : 'border-[#D5CCC0] bg-white text-transparent'}`}>
+                      ✓
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div
+              id="style-limit-msg"
+              aria-live="polite"
+              className={`text-[11.5px] text-center min-h-[1.2em] ${selectedStyles.length >= 3 ? 'text-[#92540D] font-semibold' : 'text-[#6B645C]'}`}
+            >
+              {selectedStyles.length >= 3
+                ? 'Wybrano maksymalną liczbę stylów (3). Odznacz jeden, aby wybrać inny.'
+                : 'Możesz wybrać maksymalnie 3 style.'}
+            </div>
+
+            <div className="w-full flex flex-col gap-1.5 mt-3">
+              <label htmlFor="notes-input" className="text-xs font-semibold text-[#242220] flex justify-between">
+                <span>Czy jest coś, co mamy uwzględnić? <em className="font-normal text-[#8F867D]">(Opcjonalne)</em></span>
+                <span className="text-[11px] text-[#8F867D] font-normal" id="notes-counter">
+                  {notes.length} / 240
+                </span>
+              </label>
+              <textarea
+                id="notes-input"
+                className="w-full min-h-[70px] border-[1.5px] border-[#D5CCC0] rounded-lg p-2.5 text-sm bg-white focus:border-[#83223A] focus:outline-none focus:ring-2 focus:ring-[#FBEFF2] resize-y"
+                placeholder="Np. wolę zakryte ramiona, nie noszę bardzo krótkich fasonów, lubię podkreślać talię..."
+                maxLength={240}
+                value={notes}
+                onChange={(e) => {
+                  const sanitized = sanitizeUserText(e.target.value, 240);
+                  setNotes(sanitized);
+                }}
+              />
+              <p className="text-[10.5px] text-[#8F867D] leading-tight">
+                Wskazówki są traktowane wyłącznie jako luźne preferencje estetyczne — nie są używane bezpośrednio do tworzenia zapytań wyszukiwania.
               </p>
             </div>
 
-            <h3 className="text-[14.5px] font-bold text-[#242220] max-w-[740px] mx-auto w-full">
-              Rekomendowane fasony ubrań:
-            </h3>
+            <button type="button" className="btn-cta" id="cta-view-D" onClick={() => showView('E')}>
+              Przejdź do zdjęcia
+            </button>
+            <button type="button" className="btn-text-back" onClick={() => showView('C')}>
+              ← Wróć do wyboru okazji
+            </button>
+          </div>
 
-            {/* Dynamiczne karty krojów na podstawie analizy */}
-            <div
-              className={`grid grid-cols-1 ${
-                recommendations.length > 2 ? 'md:grid-cols-3' : 'md:grid-cols-2 max-w-[640px] mx-auto'
-              } gap-4 mb-4`}
-            >
-              {recommendations.map((rec) => (
-                <div
-                  key={rec.id}
-                  className="bg-white border border-[#EAE3D9] rounded-2xl overflow-hidden shadow-xs flex flex-col"
-                >
-                  <div className="aspect-[3/4] max-h-[230px] w-full bg-gradient-to-b from-[#FAF4EF] to-[#F1E5DA] flex items-center justify-center border-b border-[#EAE3D9]">
-                    {rec.illustration === 'wrap' && (
-                      <svg
-                        width="140"
-                        height="186"
-                        viewBox="0 0 140 186"
-                        fill="none"
-                        xmlns="http://www.w3.org/2000/svg"
-                        aria-hidden="true"
-                        focusable="false"
-                      >
-                        <defs>
-                          <linearGradient id={`wrapGrad_${rec.id}`} x1="70" y1="20" x2="70" y2="170" gradientUnits="userSpaceOnUse">
-                            <stop stopColor="#9E2A4B" />
-                            <stop offset="1" stopColor="#731C32" />
-                          </linearGradient>
-                          <linearGradient id={`wrapFold_${rec.id}`} x1="40" y1="50" x2="90" y2="100" gradientUnits="userSpaceOnUse">
-                            <stop stopColor="#B23558" />
-                            <stop offset="1" stopColor="#651428" />
-                          </linearGradient>
-                          <filter id={`shadowWrap_${rec.id}`} x="20" y="16" width="100" height="160" filterUnits="userSpaceOnUse">
-                            <feDropShadow dx="0" dy="4" stdDeviation="4" floodOpacity="0.12" />
-                          </filter>
-                        </defs>
-                        <ellipse cx="70" cy="18" rx="8" ry="11" fill="#E8DDD3" />
-                        <path d="M62 28H78L82 38H58L62 28Z" fill="#D9CDC2" />
-                        <g filter={`url(#shadowWrap_${rec.id})`}>
-                          <path d="M48 38L30 58L40 66L52 50L48 38Z" fill="#88203B" />
-                          <path d="M92 38L110 58L100 66L88 50L92 38Z" fill="#88203B" />
-                          <path d="M52 38L70 82H88L88 50L92 38H52Z" fill={`url(#wrapGrad_${rec.id})`} />
-                          <path d="M88 38L62 82H78L92 38H88Z" fill={`url(#wrapFold_${rec.id})`} />
-                          <rect x="52" y="80" width="36" height="7" rx="2" fill="#5C1022" />
-                          <path d="M76 84C76 84 84 94 86 108C82 106 78 98 76 84Z" fill="#88203B" />
-                          <path d="M52 87L34 165H106L88 87H52Z" fill={`url(#wrapGrad_${rec.id})`} />
-                          <path d="M60 87L46 165L68 165L74 87H60Z" fill="#6B162B" opacity="0.4" />
-                          <path d="M74 87L78 165L96 165L86 87H74Z" fill="#B23558" opacity="0.25" />
-                        </g>
-                      </svg>
-                    )}
+          <div className="visual-col" aria-hidden="true">
+            <div className="text-[15px] font-bold text-[#83223A] text-center leading-snug">
+              Krok 2 z 3<small className="block text-[11px] font-normal text-[#8F867D] mt-1">Doprecyzuj swój styl</small>
+            </div>
+            <div className="flex flex-col gap-2 w-full max-w-[200px]">
+              <div className="flex items-start gap-2.5 text-xs text-[#6B645C]">
+                <div className="w-7 h-7 rounded-lg bg-[#FBEFF2] text-[#83223A] flex items-center justify-center shrink-0">🎨</div>
+                <div><strong className="block text-[#242220] font-bold">Do 3 stylów</strong>Połącz ulubione estetyki.</div>
+              </div>
+              <div className="flex items-start gap-2.5 text-xs text-[#6B645C]">
+                <div className="w-7 h-7 rounded-lg bg-[#FBEFF2] text-[#83223A] flex items-center justify-center shrink-0">📝</div>
+                <div><strong className="block text-[#242220] font-bold">Twoje wskazówki</strong>Cokolwiek mamy uwzględnić.</div>
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
 
-                    {rec.illustration === 'skirt' && (
-                      <svg
-                        width="140"
-                        height="186"
-                        viewBox="0 0 140 186"
-                        fill="none"
-                        xmlns="http://www.w3.org/2000/svg"
-                        aria-hidden="true"
-                        focusable="false"
-                      >
-                        <defs>
-                          <linearGradient id={`skirtGrad_${rec.id}`} x1="70" y1="50" x2="70" y2="165" gradientUnits="userSpaceOnUse">
-                            <stop stopColor="#4A5568" />
-                            <stop offset="1" stopColor="#2D3748" />
-                          </linearGradient>
-                          <filter id={`shadowSkirt_${rec.id}`} x="20" y="38" width="100" height="135" filterUnits="userSpaceOnUse">
-                            <feDropShadow dx="0" dy="4" stdDeviation="4" floodOpacity="0.12" />
-                          </filter>
-                        </defs>
-                        <ellipse cx="70" cy="18" rx="8" ry="11" fill="#E8DDD3" />
-                        <path d="M54 36H86L88 56H52L54 36Z" fill="#D9CDC2" />
-                        <g filter={`url(#shadowSkirt_${rec.id})`}>
-                          <path d="M50 56H90L88 68H52L50 56Z" fill="#1A202C" />
-                          <path d="M52 68L26 162H114L88 68H52Z" fill={`url(#skirtGrad_${rec.id})`} />
-                          <path d="M60 68L48 162L58 162L66 68H60Z" fill="#1A202C" opacity="0.3" />
-                          <path d="M72 68L68 162L80 162L76 68H72Z" fill="#CBD5E0" opacity="0.15" />
-                          <path d="M80 68L92 162L102 162L86 68H80Z" fill="#1A202C" opacity="0.3" />
-                        </g>
-                      </svg>
-                    )}
+      {/* ========================================================= */}
+      {/* WIDOK E — INSTRUKCJA ZDJĘCIA                              */}
+      {/* ========================================================= */}
+      {currentView === 'E' && (
+        <section className="view-card desktop-split" id="view-E" aria-labelledby="title-E">
+          <div className="form-col">
+            <div className="inline-flex items-center gap-1.5 bg-[#FBEFF2] text-[#83223A] border border-[#E8D5DA] text-xs font-semibold px-3 py-1 rounded-full mb-2.5 self-center">
+              Krok 3 z 3 • Przygotowanie zdjęcia
+            </div>
+            <h2 className="text-xl font-bold text-[#242220] tracking-tight text-center" id="title-E">
+              Jak przygotować dobre zdjęcie?
+            </h2>
+            <p className="text-[13px] text-[#6B645C] mt-1.5 text-center leading-relaxed">
+              Trzy proste wskazówki, dzięki którym algorytm trafnie odczyta proporcje Twojej sylwetki.
+            </p>
 
-                    {rec.illustration === 'vneck' && (
-                      <svg
-                        width="140"
-                        height="186"
-                        viewBox="0 0 140 186"
-                        fill="none"
-                        xmlns="http://www.w3.org/2000/svg"
-                        aria-hidden="true"
-                        focusable="false"
-                      >
-                        <defs>
-                          <linearGradient id={`vGrad_${rec.id}`} x1="70" y1="30" x2="70" y2="160" gradientUnits="userSpaceOnUse">
-                            <stop stopColor="#C28B59" />
-                            <stop offset="1" stopColor="#9C6636" />
-                          </linearGradient>
-                          <filter id={`shadowV_${rec.id}`} x="20" y="24" width="100" height="145" filterUnits="userSpaceOnUse">
-                            <feDropShadow dx="0" dy="4" stdDeviation="4" floodOpacity="0.12" />
-                          </filter>
-                        </defs>
-                        <ellipse cx="70" cy="18" rx="8" ry="11" fill="#E8DDD3" />
-                        <path d="M64 26H76V38H64V26Z" fill="#D9CDC2" />
-                        <g filter={`url(#shadowV_${rec.id})`}>
-                          <path d="M46 36L28 72L38 78L52 50L46 36Z" fill="#8A572B" />
-                          <path d="M94 36L112 72L102 78L88 50L94 36Z" fill="#8A572B" />
-                          <path d="M48 36L70 76L92 36H94L88 110L52 110L46 36H48Z" fill={`url(#vGrad_${rec.id})`} />
-                          <path d="M48 36L70 76L66 76L46 36H48Z" fill="#754720" />
-                          <path d="M92 36L70 76L74 76L94 36H92Z" fill="#754720" />
-                          <path d="M52 110L48 160H92L88 110H52Z" fill="#8A572B" />
-                        </g>
-                      </svg>
-                    )}
-                  </div>
-                  <div className="p-3.5 flex flex-col flex-grow justify-between">
-                    <div>
-                      <h4 className="text-[13.5px] font-bold text-[#242220]">{rec.title}</h4>
-                      <div className="flex flex-wrap gap-1.5 my-2">
-                        {rec.badges.map((badge, idx) => (
-                          <span
-                            key={idx}
-                            className="bg-[#FAF7F2] border border-[#EAE3D9] text-[#242220] text-[11px] font-medium px-2 py-0.5 rounded-md"
-                          >
-                            {badge}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="bg-[#FBF6F0] border-l-3 border-[#D6A87C] p-2 rounded-r-md text-[11.5px] text-[#242220] leading-snug mt-2">
-                      <strong>Wskazówka:</strong>
-                      <br />
-                      {rec.tip}
-                    </div>
-                  </div>
+            <div className="flex flex-col gap-2.5 my-4">
+              <div className="bg-[#FAF7F2] border border-[#EAE3D9] rounded-xl p-3 flex gap-3 items-center">
+                <div className="w-8 h-8 rounded-lg bg-[#EFF8F3] text-[#1E663B] border border-[#C8E8D5] flex items-center justify-center font-bold text-sm shrink-0">1</div>
+                <div>
+                  <div className="text-[13.5px] font-bold text-[#242220]">Pokaż całą sylwetkę</div>
+                  <div className="text-xs text-[#6B645C] mt-0.5">Kadr od stóp do czubka głowy pozwala ocenić ogólne proporcje.</div>
                 </div>
-              ))}
+              </div>
+              <div className="bg-[#FAF7F2] border border-[#EAE3D9] rounded-xl p-3 flex gap-3 items-center">
+                <div className="w-8 h-8 rounded-lg bg-[#EFF8F3] text-[#1E663B] border border-[#C8E8D5] flex items-center justify-center font-bold text-sm shrink-0">2</div>
+                <div>
+                  <div className="text-[13.5px] font-bold text-[#242220]">Stań przodem w naturalnej pozycji</div>
+                  <div className="text-xs text-[#6B645C] mt-0.5">Swobodna, wyprostowana postawa bez skręcania bioder i tułowia.</div>
+                </div>
+              </div>
+              <div className="bg-[#FAF7F2] border border-[#EAE3D9] rounded-xl p-3 flex gap-3 items-center">
+                <div className="w-8 h-8 rounded-lg bg-[#EFF8F3] text-[#1E663B] border border-[#C8E8D5] flex items-center justify-center font-bold text-sm shrink-0">3</div>
+                <div>
+                  <div className="text-[13.5px] font-bold text-[#242220]">Wybierz równe, łagodne światło</div>
+                  <div className="text-xs text-[#6B645C] mt-0.5">Światło dzienne lub rozproszone oświetlenie ułatwia czytanie konturu.</div>
+                </div>
+              </div>
             </div>
 
-            {/* Przycisk przejścia do ubrań zależny od stanu ProductLoadStatus */}
-            <div className="flex flex-col items-center w-full">
-              <button
-                type="button"
-                onClick={handleViewProducts}
-                disabled={productLoadStatus === 'loading'}
-                className="w-full md:max-w-[500px] min-h-[48px] bg-[#83223A] hover:bg-[#6D1B2F] text-white font-semibold text-sm rounded-xl transition-all shadow-md active:scale-[0.99] flex items-center justify-center disabled:opacity-60 disabled:cursor-wait"
-              >
-                {productLoadStatus === 'loading' ? (
-                  <>
-                    <Loader2 className="animate-spin mr-2 motion-reduce:animate-none" size={18} aria-hidden="true" focusable="false" />
-                    Szukamy pasujących ubrań…
-                  </>
-                ) : (
-                  'Zobacz ubrania w tych fasonach'
-                )}
-              </button>
+            <button type="button" className="btn-cta" id="cta-view-E" onClick={() => showView('F')}>
+              Wybierz zdjęcie
+            </button>
+            <button type="button" className="btn-text-back" onClick={() => showView('D')}>
+              ← Wróć do preferencji stylu
+            </button>
+          </div>
 
-              {productLoadStatus === 'error' && (
-                <div className="mt-3 flex flex-col items-center gap-1.5" role="alert">
-                  <p className="text-xs text-[#9E1C38] font-medium">Nie udało się teraz pobrać produktów.</p>
+          <div className="visual-col" aria-hidden="true">
+            <div className="text-[15px] font-bold text-[#83223A] text-center leading-snug">
+              Krok 3 z 3<small className="block text-[11px] font-normal text-[#8F867D] mt-1">Zdjęcie sylwetki — wskazówki</small>
+            </div>
+            <div className="flex flex-col gap-2 w-full max-w-[200px]">
+              <div className="flex items-start gap-2.5 text-xs text-[#6B645C]">
+                <div className="w-7 h-7 rounded-lg bg-[#FBEFF2] text-[#83223A] flex items-center justify-center shrink-0">📏</div>
+                <div><strong className="block text-[#242220] font-bold">Cała sylwetka</strong>Od stóp do głowy w jednym kadrze.</div>
+              </div>
+              <div className="flex items-start gap-2.5 text-xs text-[#6B645C]">
+                <div className="w-7 h-7 rounded-lg bg-[#FBEFF2] text-[#83223A] flex items-center justify-center shrink-0">☀️</div>
+                <div><strong className="block text-[#242220] font-bold">Dobre światło</strong>Dzienne lub równomierne oświetlenie.</div>
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* ========================================================= */}
+      {/* WIDOK F — ZDJĘCIE, PODSUMOWANIE I ZGODA                   */}
+      {/* ========================================================= */}
+      {currentView === 'F' && (
+        <section className="view-card desktop-split" id="view-F" aria-labelledby="title-F">
+          <div className="form-col">
+            <div className="inline-flex items-center gap-1.5 bg-[#FBEFF2] text-[#83223A] border border-[#E8D5DA] text-xs font-semibold px-3 py-1 rounded-full mb-2.5 self-center">
+              Krok 3 z 3 • Zatwierdzenie
+            </div>
+            <h2 className="text-xl font-bold text-[#242220] tracking-tight text-center" id="title-F">
+              Zdjęcie i podsumowanie
+            </h2>
+            <p className="text-[13px] text-[#6B645C] mt-1.5 text-center leading-relaxed">
+              Sprawdź swoje wybory przed analizą proporcji.
+            </p>
+
+            {/* Podsumowanie wyborów z opcją edycji */}
+            <div className="bg-[#FAF7F2] border border-[#EAE3D9] rounded-xl p-3 my-3 w-full">
+              <div className="text-[11px] font-bold uppercase tracking-wider text-[#8F867D] mb-1.5 flex justify-between items-center">
+                <span>Twoje wybory</span>
+                <button
+                  type="button"
+                  className="text-[#83223A] underline text-[11.5px] font-bold cursor-pointer p-0.5 hover:text-[#6D1B2F]"
+                  onClick={() => handleEditChoices('B')}
+                >
+                  Edytuj wybory
+                </button>
+              </div>
+              <div className="flex justify-between text-xs py-1 border-b border-dashed border-[#EAE3D9]">
+                <span className="text-[#6B645C]">Kategoria:</span>
+                <span className="font-semibold text-[#242220]">{selectedCategory ? CATEGORY_NAMES[selectedCategory] : '—'}</span>
+              </div>
+              <div className="flex justify-between text-xs py-1 border-b border-dashed border-[#EAE3D9]">
+                <span className="text-[#6B645C]">Okazja:</span>
+                <span className="font-semibold text-[#242220]">
+                  {selectedOccasion
+                    ? selectedOccasion === 'other' && customOccasion
+                      ? customOccasion
+                      : OCCASION_NAMES[selectedOccasion]
+                    : '—'}
+                </span>
+              </div>
+              <div className="flex justify-between text-xs py-1 border-b border-dashed border-[#EAE3D9]">
+                <span className="text-[#6B645C]">Preferencje stylu:</span>
+                <span className="font-semibold text-[#242220]">
+                  {selectedStyles.length > 0 ? selectedStyles.map((s) => STYLE_NAMES[s]).join(', ') : 'Dopasowany do okazji'}
+                </span>
+              </div>
+              {notes.trim().length > 0 && (
+                <div className="flex justify-between text-xs py-1">
+                  <span className="text-[#6B645C]">Wskazówki:</span>
+                  <span className="font-semibold text-[#242220] max-w-[60%] text-right truncate">{notes.trim()}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Strefa wczytywania zdjęcia */}
+            <label htmlFor="demo-file-input" className="upload-box" id="upload-zone">
+              <input
+                ref={fileInputRef}
+                type="file"
+                id="demo-file-input"
+                className="sr-only"
+                accept="image/jpeg,image/png,image/webp"
+                onChange={handleFileChange}
+              />
+              {!previewUrl ? (
+                <div className="flex flex-col items-center gap-1 py-2" id="upload-idle-state">
+                  <div className="text-2xl">📷</div>
+                  <div className="text-[13.5px] font-bold text-[#242220]">Wybierz zdjęcie z urządzenia</div>
+                  <div className="text-[11.5px] text-[#8F867D]">JPG, PNG lub WEBP (do 10 MB)</div>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center gap-2 py-1" id="upload-preview-state">
+                  {/* Prawdziwy podgląd pliku; brak pustego img src */}
+                  <img
+                    id="upload-preview-img"
+                    src={previewUrl}
+                    alt="Podgląd sylwetki"
+                    className="max-h-[180px] max-w-full rounded-lg object-contain shadow-xs"
+                  />
                   <button
                     type="button"
-                    onClick={() => analysisResult?.apiQuery && fetchProductsForView(analysisResult.apiQuery, false)}
-                    className="text-xs font-semibold text-[#83223A] hover:underline"
+                    className="text-[11.5px] text-[#83223A] font-bold underline mt-1"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      handleClearPhoto();
+                      fileInputRef.current?.click();
+                    }}
                   >
-                    Spróbuj pobrać ponownie
+                    Zmień zdjęcie
                   </button>
                 </div>
               )}
+            </label>
+
+            {/* Błąd pliku */}
+            {fileError && (
+              <div
+                id="file-error-msg"
+                role="alert"
+                aria-live="assertive"
+                className="text-[11.5px] text-[#9E1C38] bg-[#FDF2F4] border border-[#F3CAD2] rounded-lg p-2 my-1 text-center"
+              >
+                {fileError}
+              </div>
+            )}
+
+            {/* Checkbox zgody prawnej */}
+            <div className="bg-[#FAF7F2] border border-[#EAE3D9] rounded-xl p-2.5 mt-2 flex gap-2 items-start w-full">
+              <input
+                type="checkbox"
+                id="consent-check"
+                checked={consentChecked}
+                onChange={(e) => setConsentChecked(e.target.checked)}
+                className="w-4 h-4 accent-[#83223A] mt-0.5 shrink-0 cursor-pointer"
+              />
+              <label htmlFor="consent-check" className="text-[11.5px] text-[#242220] leading-snug cursor-pointer">
+                Wyrażam zgodę na przesłanie zdjęcia do usługi Google Gemini w celu analizy sylwetki i przygotowania rekomendacji fasonów uwzględniających moje wybory.
+              </label>
+            </div>
+            <p className="text-[10.5px] text-[#8F867D] mt-1 px-1 leading-tight">
+              Analiza może obejmować cechy widoczne na zdjęciu, takie jak proporcje sylwetki i ułożenie ubrania.
+            </p>
+
+            {/* Główny przycisk analizy */}
+            <button
+              type="button"
+              className="btn-cta"
+              id="cta-view-F"
+              disabled={!isPhotoStepReady}
+              onClick={handleStartAnalysis}
+            >
+              {isSigningIn ? (
+                <>
+                  <Loader2 className="animate-spin" size={16} />
+                  <span>Logowanie...</span>
+                </>
+              ) : isAnalysisLoading ? (
+                <>
+                  <Loader2 className="animate-spin" size={16} />
+                  <span>Przygotowuję analizę...</span>
+                </>
+              ) : user ? (
+                'Przygotuj rekomendacje'
+              ) : (
+                'Zaloguj się i przygotuj rekomendacje'
+              )}
+            </button>
+            <button type="button" className="btn-text-back" onClick={() => showView('E')}>
+              ← Wróć do instrukcji zdjęcia
+            </button>
+          </div>
+
+          <div className="visual-col" aria-hidden="true">
+            <div className="text-[15px] font-bold text-[#83223A] text-center leading-snug">
+              Krok 3 z 3<small className="block text-[11px] font-normal text-[#8F867D] mt-1">Prawie gotowe!</small>
+            </div>
+            <div className="flex flex-col gap-2.5 w-full max-w-[200px]">
+              <div className="flex items-start gap-2.5 text-xs text-[#6B645C]">
+                <div className="w-7 h-7 rounded-lg bg-[#FBEFF2] text-[#83223A] flex items-center justify-center shrink-0">🔒</div>
+                <div><strong className="block text-[#242220] font-bold">Świadoma zgoda</strong>Przed analizą potwierdzasz przesłanie zdjęcia do usługi AI.</div>
+              </div>
+              <div className="flex items-start gap-2.5 text-xs text-[#6B645C]">
+                <div className="w-7 h-7 rounded-lg bg-[#FBEFF2] text-[#83223A] flex items-center justify-center shrink-0">✔️</div>
+                <div><strong className="block text-[#242220] font-bold">Wymagana akcja</strong>Analiza rusza dopiero po Twoim zatwierdzeniu.</div>
+              </div>
             </div>
           </div>
-        )}
+        </section>
+      )}
 
-        {/* ========================================================= */}
-        {/* WIDOK F: Propozycje ubrań (Mobile 1 col, Desktop 2 col)   */}
-        {/* ========================================================= */}
-        {currentView === 'F' && (
-          <div className="flex flex-col gap-4 w-full max-w-[980px] mx-auto">
-            <div>
-              <h2 className="text-[17px] font-bold text-[#242220] tracking-tight">
-                Ubrania w polecanych fasonach
-              </h2>
-              <p className="text-[#6B645C] text-[12.5px] mt-1">
-                Zobacz dostępne propozycje odpowiadające przygotowanym rekomendacjom.
-              </p>
+      {/* ========================================================= */}
+      {/* WIDOK G — OCZEKIWANIE                                     */}
+      {/* ========================================================= */}
+      {currentView === 'G' && (
+        <section className="view-card" id="view-G" aria-labelledby="title-G">
+          <div className="loader-pulse">
+            <div className="loader-dot" />
+          </div>
+          <h2 className="text-xl font-bold text-[#242220] tracking-tight text-center" id="title-G">
+            Tworzymy rekomendacje dla Ciebie
+          </h2>
+          <p className="text-[13px] font-semibold text-[#242220] mt-3 text-center leading-relaxed">
+            Łączymy informacje o wybranej okazji i stylu z analizą widocznych proporcji sylwetki.
+          </p>
+          <p className="text-xs text-[#6B645C] mt-2.5 text-center leading-relaxed">
+            Pozostań na tej stronie. Po zakończeniu pokażemy fasony, które mogą dobrze odpowiadać Twoim potrzebom.
+          </p>
+        </section>
+      )}
+
+      {/* ========================================================= */}
+      {/* WIDOK H — REKOMENDACJE FASONÓW                            */}
+      {/* ========================================================= */}
+      {currentView === 'H' && (
+        <section className="view-card wide-layout" id="view-H" aria-labelledby="title-H">
+          {/* Pasek podsumowania kontekstu */}
+          <div className="bg-[#FBEFF2] border border-[#E8D5DA] rounded-xl p-2.5 sm:px-4 text-xs font-semibold text-[#83223A] flex items-center justify-between gap-2 mb-4 w-full">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span>Szukasz:</span>
+              <strong id="bar-summary-text">
+                {selectedCategory ? CATEGORY_NAMES[selectedCategory] : ''} •{' '}
+                {selectedOccasion ? (selectedOccasion === 'other' && customOccasion ? customOccasion : OCCASION_NAMES[selectedOccasion]) : ''} •{' '}
+                {selectedStyles.length > 0 ? selectedStyles.map((s) => STYLE_NAMES[s]).join(', ') : 'Dopasowany do okazji'}
+              </strong>
             </div>
+            <button type="button" className="text-[#83223A] underline text-[11.5px] font-bold p-1 cursor-pointer" onClick={() => handleEditChoices('B')}>
+              Zmień moje wybory
+            </button>
+          </div>
 
-            {/* Podgląd wyniku VTON jeśli wygenerowano */}
-            {isTryOnLoading && (
-              <div
-                role="status"
-                aria-live="polite"
-                className="bg-white border border-[#EAE3D9] p-4 rounded-2xl flex items-center justify-center gap-3"
-              >
-                <Loader2 className="animate-spin text-[#83223A] motion-reduce:animate-none" size={20} aria-hidden="true" focusable="false" />
-                <span className="text-xs font-semibold text-[#242220]">
-                  Dopasowuję wizualnie fason do Twojego zdjęcia...
-                </span>
-              </div>
-            )}
-            {tryOnError && (
-              <div role="alert" className="bg-[#FDF2F4] border border-[#F3CAD2] text-[#9E1C38] text-xs p-3 rounded-xl">
-                {tryOnError}
-              </div>
-            )}
-            {tryOnImage && (
-              <div className="bg-white border border-[#EAE3D9] p-4 rounded-2xl flex flex-col items-center">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-[#83223A] mb-2">
-                  Twój wynik wirtualnej przymiarki (VTON):
-                </h4>
-                <img
-                  src={tryOnImage}
-                  alt="Wynik przymiarki"
-                  className="max-h-[360px] rounded-xl object-contain shadow-md"
-                />
-              </div>
-            )}
+          <div className="text-center max-w-[680px] mx-auto mb-4">
+            <h2 className="text-xl sm:text-2xl font-bold text-[#242220] tracking-tight" id="title-H">
+              Fasony, które mogą dobrze współgrać z Twoimi proporcjami i okazją
+            </h2>
+            <p className="text-[13px] text-[#6B645C] mt-1.5 leading-relaxed">
+              Potraktuj je jako inspirację i wybierz te, w których czujesz się najlepiej.
+            </p>
+          </div>
 
-            {/* Siatka produktów z API */}
-            {products.length > 0 && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 justify-center">
-                {products.map((p) => {
-                  const canTryOn = hasVerifiedTryOnAsset(p);
-                  const priceObj = p.price;
-                  const hasPrice =
-                    Boolean(priceObj && typeof priceObj.amount === 'number' && priceObj.amount > 0 && priceObj.currency);
-                  const displayPrice = hasPrice && priceObj ? `${priceObj.amount.toFixed(2)} ${priceObj.currency}` : null;
-                  const displayMerchant =
-                    p.merchant?.name && p.merchant.name.trim().length > 0 ? p.merchant.name : (p.brand || null);
-                  const productImgUrl = p.heroImage?.url || null;
-
-                  return (
-                    <div
-                      key={p.id}
-                      className="bg-white border border-[#EAE3D9] rounded-2xl overflow-hidden shadow-xs flex flex-col max-w-[480px] w-full mx-auto"
-                    >
-                      <div className="aspect-[3/4] bg-[#FAF7F2] w-full relative flex items-center justify-center border-b border-[#EAE3D9] overflow-hidden">
-                        {productImgUrl ? (
-                          <img
-                            src={productImgUrl}
-                            alt={p.title || 'Zdjęcie produktu'}
-                            className="w-full h-full object-contain p-2"
-                            loading="lazy"
-                          />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center text-[#8F867D] text-xs">
-                            Brak zdjęcia
-                          </div>
-                        )}
-                      </div>
-                      <div className="p-4 flex flex-col flex-grow justify-between gap-3">
-                        <div>
-                          {displayMerchant && (
-                            <span className="text-[11px] font-semibold text-[#8F867D] block mb-1">
-                              {displayMerchant}
-                            </span>
-                          )}
-                          <h4 className="text-[14px] font-bold text-[#242220] line-clamp-2">
-                            {p.title}
-                          </h4>
-                          {displayPrice && (
-                            <div className="mt-1.5">
-                              <span className="text-[16px] font-bold text-[#242220]">
-                                {displayPrice}
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                        <div className="flex gap-2 mt-2">
-                          {p.productUrl && (
-                            <a
-                              href={p.productUrl}
-                              target="_blank"
-                              rel="noopener noreferrer sponsored"
-                              className="flex-1 min-h-[42px] bg-white border border-[#D5CCC0] hover:bg-[#FAF7F2] text-[#242220] font-semibold text-[12.5px] rounded-xl transition-all flex items-center justify-center text-center"
-                            >
-                              Zobacz produkt
-                            </a>
-                          )}
-                          {canTryOn && (
-                            <button
-                              type="button"
-                              onClick={() => handleTryOn(p)}
-                              disabled={isAppProcessing || isTryOnLoading || !personBase64}
-                              className="flex-1 min-h-[42px] bg-[#83223A] hover:bg-[#6D1B2F] text-white font-semibold text-[12.5px] rounded-xl transition-all shadow-xs active:scale-[0.99] flex items-center justify-center disabled:opacity-50"
-                            >
-                              Przymierz
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
+          {/* Karty rekomendacji */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 my-5 w-full" id="recs-grid-container">
+            {displayRecommendationCards.map((card) => (
+              <div key={card.id} className="bg-white border border-[#EAE3D9] rounded-2xl overflow-hidden flex flex-col shadow-xs">
+                <div className="h-[170px] bg-gradient-to-b from-[#FAF4EF] to-[#F1E5DA] border-b border-[#EAE3D9] flex items-center justify-center relative">
+                  <svg width="100" height="140" viewBox="0 0 140 186" fill="none" aria-hidden="true" focusable="false">
+                    <ellipse cx="70" cy="18" rx="8" ry="11" fill="#E8DDD3" />
+                    <path d="M52 38L70 82L88 38H94L88 160H52L46 38H52Z" fill="#83223A" />
+                  </svg>
+                </div>
+                <div className="p-4 flex flex-col flex-1 gap-2">
+                  <h3 className="text-[15px] font-bold text-[#242220]">{card.title}</h3>
+                  <p className="text-[12.5px] text-[#6B645C] leading-relaxed">{card.reason}</p>
+                  <div className="flex gap-1.5 flex-wrap my-1">
+                    {card.badges.map((b, i) => (
+                      <span key={i} className="text-[10.5px] font-semibold px-2 py-0.5 rounded-full bg-[#FBEFF2] text-[#83223A] border border-[#E8D5DA]">
+                        {b}
+                      </span>
+                    ))}
+                  </div>
+                  <div className="mt-auto bg-[#FAF7F2] border border-[#EAE3D9] rounded-lg p-2 text-[11.5px] text-[#242220]">
+                    <strong className="text-[#83223A] block text-[10.5px] uppercase tracking-wider mb-0.5">Na co warto zwrócić uwagę</strong>
+                    {card.tip}
+                  </div>
+                </div>
               </div>
-            )}
+            ))}
+          </div>
 
-            <div className="flex justify-center mt-3">
+          <div className="flex flex-col items-center gap-2 max-w-[420px] mx-auto mt-3 w-full">
+            <button
+              type="button"
+              className="btn-cta"
+              id="cta-view-H"
+              onClick={handleViewProducts}
+            >
+              {productLoadStatus === 'loading' ? (
+                <>
+                  <Loader2 className="animate-spin" size={16} />
+                  <span>Wyszukuję propozycje ubrań...</span>
+                </>
+              ) : (
+                'Zobacz propozycje ubrań'
+              )}
+            </button>
+            <button type="button" className="btn-secondary" onClick={openResetModal}>
+              Zacznij od nowa
+            </button>
+          </div>
+        </section>
+      )}
+
+      {/* ========================================================= */}
+      {/* WIDOK I — PRODUKTY Z BAZY (BEZ DANYCH DEMO!)              */}
+      {/* ========================================================= */}
+      {currentView === 'I' && (
+        <section className="view-card wide-layout" id="view-I" aria-labelledby="title-I">
+          <div className="bg-[#FBEFF2] border border-[#E8D5DA] rounded-xl p-2.5 sm:px-4 text-xs font-semibold text-[#83223A] flex items-center justify-between gap-2 mb-4 w-full">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span>Kontekst:</span>
+              <strong id="bar-summary-text-I">
+                {selectedCategory ? CATEGORY_NAMES[selectedCategory] : ''} •{' '}
+                {selectedOccasion ? (selectedOccasion === 'other' && customOccasion ? customOccasion : OCCASION_NAMES[selectedOccasion]) : ''}
+              </strong>
+            </div>
+            <button type="button" className="text-[#83223A] underline text-[11.5px] font-bold p-1 cursor-pointer" onClick={() => showView('H')}>
+              Wróć do fasonów
+            </button>
+          </div>
+
+          <div className="text-center max-w-[680px] mx-auto mb-4">
+            <h2 className="text-xl sm:text-2xl font-bold text-[#242220] tracking-tight" id="title-I">
+              Propozycje ubrań odpowiadające fasonom
+            </h2>
+            <p className="text-[13px] text-[#6B645C] mt-1.5 leading-relaxed">
+              Przejrzyj propozycje ubrań dopasowane do Twojej kategorii i stylu.
+            </p>
+          </div>
+
+          {/* Błąd lub wynik przymiarki VTON */}
+          {tryOnError && (
+            <div role="alert" className="w-full bg-[#FDF2F4] border border-[#F3CAD2] text-[#9E1C38] rounded-xl p-3 text-xs mb-4 text-center">
+              {tryOnError}
+            </div>
+          )}
+
+          {tryOnImage && (
+            <div className="w-full bg-[#EFF8F3] border border-[#C8E8D5] rounded-2xl p-4 mb-6 flex flex-col items-center gap-3">
+              <div className="text-xs font-bold text-[#1E663B] uppercase tracking-wider">✨ Wynik wirtualnej przymiarki</div>
+              <img src={tryOnImage} alt="Wirtualna przymiarka" className="max-h-[360px] rounded-xl object-contain shadow-md" />
               <button
                 type="button"
-                onClick={() => showView('E')}
-                className="w-full md:max-w-[400px] min-h-[44px] bg-white border border-[#D5CCC0] hover:bg-[#FAF7F2] text-[#242220] font-semibold text-sm rounded-xl transition-all flex items-center justify-center"
+                className="text-xs text-[#1E663B] font-semibold underline cursor-pointer"
+                onClick={() => setTryOnImage(null)}
               >
-                Wróć do rekomendacji krojów
+                Zamknij podgląd przymiarki
+              </button>
+            </div>
+          )}
+
+          {/* Siatka produktów rzeczywistych */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 my-4 w-full" id="products-grid-container">
+            {products.map((product) => {
+              const canTryOn = hasVerifiedTryOnAsset(product) && isValidVtonCategory(analysisResult?.replicateCategory);
+              return (
+                <div key={product.id} className="bg-white border border-[#EAE3D9] rounded-xl overflow-hidden flex flex-col shadow-xs">
+                  <div className="aspect-[3/4] max-h-[240px] bg-[#F4EFEB] border-b border-[#EAE3D9] flex items-center justify-center overflow-hidden relative">
+                    {product.heroImage?.url ? (
+                      <img
+                        src={product.heroImage.url}
+                        alt={product.title}
+                        className="w-full h-full object-cover"
+                        loading="lazy"
+                      />
+                    ) : (
+                      <div className="text-2xl text-[#8F867D]">👗</div>
+                    )}
+                  </div>
+                  <div className="p-3.5 flex flex-col flex-1 justify-between gap-2">
+                    <div>
+                      {product.brand && (
+                        <span className="text-[11px] font-semibold text-[#8F867D] uppercase tracking-wider block">
+                          {product.brand}
+                        </span>
+                      )}
+                      <h3 className="text-[13.5px] font-bold text-[#242220] leading-snug line-clamp-2">
+                        {product.title}
+                      </h3>
+                      {product.price && (
+                        <div className="text-sm font-bold text-[#242220] mt-1">
+                          {product.price.amount} {product.price.currency}
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex gap-2 mt-1.5">
+                      <a
+                        href={product.productUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex-1 min-h-[42px] bg-white border border-[#D5CCC0] text-[#242220] rounded-lg text-xs font-semibold inline-flex items-center justify-center hover:bg-[#FAF7F2] transition-colors"
+                      >
+                        Przejdź do oferty
+                      </a>
+                      {canTryOn && (
+                        <button
+                          type="button"
+                          disabled={isTryOnLoading}
+                          onClick={() => handleTryOn(product)}
+                          className="flex-1 min-h-[42px] bg-[#83223A] text-white rounded-lg text-[11px] font-semibold inline-flex items-center justify-center hover:bg-[#6D1B2F] transition-colors disabled:opacity-60 text-center leading-tight"
+                        >
+                          {isTryOnLoading ? <Loader2 className="animate-spin" size={14} /> : 'Przymierz'}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="flex flex-col items-center gap-2 max-w-[420px] mx-auto mt-4 w-full">
+            <button type="button" className="btn-secondary" onClick={() => showView('H')}>
+              Wróć do rekomendacji fasonów
+            </button>
+            <button type="button" className="btn-text-back" onClick={openResetModal}>
+              Zacznij od nowa
+            </button>
+          </div>
+        </section>
+      )}
+
+      {/* ========================================================= */}
+      {/* WIDOK J1 — BŁĄD ZDJĘCIA                                   */}
+      {/* ========================================================= */}
+      {currentView === 'J1' && (
+        <section className="view-card" id="view-J1" aria-labelledby="title-J1">
+          <div className="w-[52px] h-[52px] rounded-full bg-[#FEF7EE] border border-[#F7DDBE] text-[#92540D] flex items-center justify-center text-2xl mx-auto mb-3">
+            📷
+          </div>
+          <h2 className="text-xl font-bold text-[#242220] tracking-tight text-center" id="title-J1">
+            Potrzebujemy wyraźniejszego zdjęcia
+          </h2>
+          <p className="text-[13px] text-[#6B645C] mt-1.5 text-center leading-relaxed">
+            Na przesłanym zdjęciu kontur sylwetki był zbyt mało widoczny lub postać znajdowała się zbyt daleko.
+          </p>
+          <div className="bg-[#FAF7F2] border border-[#EAE3D9] rounded-xl p-3.5 my-4">
+            <div className="text-[12.5px] font-bold text-[#242220] mb-1.5">Co możesz zrobić:</div>
+            <ul className="text-xs text-[#6B645C] list-disc pl-4.5 space-y-1 leading-relaxed">
+              <li>Stań bliżej obiektywu w równym świetle dziennym</li>
+              <li>Upewnij się, że w kadrze mieści się cała sylwetka</li>
+              <li>Twoje wcześniejsze wybory kategorii i stylu zostały zachowane</li>
+            </ul>
+          </div>
+          <button type="button" className="btn-cta" onClick={() => showView('F')}>
+            Wybierz inne zdjęcie
+          </button>
+          <button type="button" className="btn-secondary" onClick={() => showView('E')}>
+            Zobacz wskazówki do zdjęcia
+          </button>
+        </section>
+      )}
+
+      {/* ========================================================= */}
+      {/* WIDOK J2 — BŁĄD USŁUGI (BEZ FAŁSZYWYCH OBIETNIC)          */}
+      {/* ========================================================= */}
+      {currentView === 'J2' && (
+        <section className="view-card" id="view-J2" aria-labelledby="title-J2">
+          <div className="w-[52px] h-[52px] rounded-full bg-[#FDF2F4] border border-[#F3CAD2] text-[#9E1C38] flex items-center justify-center text-2xl mx-auto mb-3">
+            🔌
+          </div>
+          <h2 className="text-xl font-bold text-[#242220] tracking-tight text-center" id="title-J2">
+            Nie udało się teraz przygotować rekomendacji
+          </h2>
+          <p className="text-[13px] text-[#6B645C] mt-1.5 text-center leading-relaxed">
+            Nie udało się teraz dokończyć analizy. Możesz spróbować ponownie albo wrócić do poprzedniego kroku.
+          </p>
+          <div className="bg-[#FAF7F2] border border-[#EAE3D9] rounded-xl p-3.5 my-4">
+            <div className="text-[12.5px] font-bold text-[#242220] mb-1.5">Zalecane działanie:</div>
+            <ul className="text-xs text-[#6B645C] list-disc pl-4.5 space-y-1 leading-relaxed">
+              <li>Kliknij poniższy przycisk, aby ponowić próbę</li>
+              <li>Sprawdź, czy Twoje połączenie z internetem jest aktywne</li>
+              <li>Możesz wrócić do formularza i skorygować wybrane parametry</li>
+            </ul>
+          </div>
+          <button type="button" className="btn-cta" onClick={handleStartAnalysis}>
+            Ponów próbę
+          </button>
+          <button type="button" className="btn-secondary" onClick={() => showView('F')}>
+            Wróć do wyboru zdjęcia
+          </button>
+        </section>
+      )}
+
+      {/* ========================================================= */}
+      {/* WIDOK J3 — BRAK PRODUKTÓW                                 */}
+      {/* ========================================================= */}
+      {currentView === 'J3' && (
+        <section className="view-card" id="view-J3" aria-labelledby="title-J3">
+          <div className="w-[52px] h-[52px] rounded-full bg-[#FEF7EE] border border-[#F7DDBE] text-[#92540D] flex items-center justify-center text-2xl mx-auto mb-3">
+            🔍
+          </div>
+          <h2 className="text-xl font-bold text-[#242220] tracking-tight text-center" id="title-J3">
+            Nie znaleźliśmy teraz pasujących propozycji
+          </h2>
+          <p className="text-[13px] text-[#6B645C] mt-1.5 text-center leading-relaxed">
+            Rekomendacje fasonów są gotowe, ale nie znaleźliśmy obecnie ubrań spełniających wszystkie wybrane filtry.
+          </p>
+          <div className="bg-[#FAF7F2] border border-[#EAE3D9] rounded-xl p-3.5 my-4">
+            <div className="text-[12.5px] font-bold text-[#242220] mb-1.5">Możliwe opcje:</div>
+            <ul className="text-xs text-[#6B645C] list-disc pl-4.5 space-y-1 leading-relaxed">
+              <li>Możesz zmienić okazję lub styl, aby poszerzyć kryteria wyszukiwania</li>
+              <li>Wróć do rekomendacji krojów i poszukaj podobnych modeli w swoich ulubionych sklepach</li>
+            </ul>
+          </div>
+          <button type="button" className="btn-cta" onClick={() => showView('C')}>
+            Zmień okazję lub styl
+          </button>
+          <button type="button" className="btn-secondary" onClick={() => showView('H')}>
+            Wróć do rekomendacji fasonów
+          </button>
+        </section>
+      )}
+
+      {/* ========================================================= */}
+      {/* MODAL RESETU SESJI (Dostępny z klawiatury, Focus Trap)   */}
+      {/* ========================================================= */}
+      {isResetModalOpen && (
+        <div
+          className="fixed inset-0 bg-[#242220]/60 flex items-center justify-center z-50 p-4"
+          id="reset-modal"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="modal-reset-title"
+          onKeyDown={handleModalKeydown}
+        >
+          <div className="bg-white rounded-2xl p-6 max-w-[400px] w-full shadow-lg text-center">
+            <h3 className="text-[17px] font-bold text-[#242220] mb-2" id="modal-reset-title">
+              Rozpocząć od nowa?
+            </h3>
+            <p className="text-[13px] text-[#6B645C] leading-relaxed">
+              Spowoduje to wyczyszczenie wybranego zdjęcia, kategorii, stylu oraz przygotowanych rekomendacji.
+            </p>
+            <div className="flex gap-2.5 mt-5">
+              <button
+                ref={resetModalCancelBtnRef}
+                type="button"
+                className="btn-secondary mt-0"
+                id="modal-cancel-btn"
+                onClick={closeResetModal}
+              >
+                Anuluj
+              </button>
+              <button
+                type="button"
+                className="btn-cta mt-0 bg-[#83223A]"
+                id="modal-confirm-btn"
+                onClick={resetStudio}
+              >
+                Wyczyść i zacznij
               </button>
             </div>
           </div>
-        )}
-
-        {/* ========================================================= */}
-        {/* Stan błędu: Wyraźniejsze zdjęcie                          */}
-        {/* ========================================================= */}
-        {currentView === 'G1' && (
-          <div className="bg-white border border-[#EAE3D9] rounded-2xl p-6 text-center shadow-xs">
-            <div
-              className="w-13 h-13 rounded-full bg-[#FEF7EE] text-[#92540D] border border-[#F7DDBE] flex items-center justify-center text-xl mx-auto mb-3.5"
-              aria-hidden="true"
-            >
-              📷
-            </div>
-            <h2 className="text-[17px] font-bold text-[#242220] tracking-tight">
-              Potrzebujemy wyraźniejszego zdjęcia
-            </h2>
-            <p className="text-[#6B645C] text-[13px] mt-1.5">
-              Przesłane zdjęcie było zbyt ciemne lub postać znajdowała się zbyt daleko obiektywu.
-            </p>
-
-            <div className="bg-[#FAF7F2] border border-[#EAE3D9] rounded-xl p-3 text-left my-4">
-              <h5 className="text-[12px] font-bold text-[#242220] mb-1.5">Jak przygotować lepsze zdjęcie:</h5>
-              <ul className="text-[11.5px] text-[#6B645C] space-y-1 pl-4 list-disc">
-                <li>Stań przodem do okna lub źródła światła</li>
-                <li>Upewnij się, że w kadrze widać całą postać</li>
-                <li>Załóż ubranie przylegające do ciała</li>
-                <li>Wybierz miejsce z równym, łagodnym światłem.</li>
-              </ul>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => showView('C')}
-              className="w-full min-h-[48px] bg-[#83223A] hover:bg-[#6D1B2F] text-white font-semibold text-sm rounded-xl transition-all shadow-md active:scale-[0.99] flex items-center justify-center mb-2"
-            >
-              Spróbuj ponownie z innym zdjęciem
-            </button>
-            <button
-              type="button"
-              onClick={() => showView('B')}
-              className="w-full min-h-[48px] bg-white border border-[#D5CCC0] hover:bg-[#FAF7F2] text-[#242220] font-semibold text-sm rounded-xl transition-all flex items-center justify-center"
-            >
-              Zobacz pełną instrukcję zdjęcia
-            </button>
-          </div>
-        )}
-
-        {/* ========================================================= */}
-        {/* Stan błędu: Chwilowa niedostępność usługi                 */}
-        {/* ========================================================= */}
-        {currentView === 'G2' && (
-          <div className="bg-white border border-[#EAE3D9] rounded-2xl p-6 text-center shadow-xs">
-            <div
-              className="w-13 h-13 rounded-full bg-[#FDF2F4] text-[#9E1C38] border border-[#F3CAD2] flex items-center justify-center text-xl mx-auto mb-3.5"
-              aria-hidden="true"
-            >
-              🔌
-            </div>
-            <h2 className="text-[17px] font-bold text-[#242220] tracking-tight">
-              Chwilowa niedostępność usługi analizy
-            </h2>
-            <p className="text-[#6B645C] text-[13px] mt-1.5">
-              Nie udało się teraz dokończyć analizy. Możesz spróbować ponownie.
-            </p>
-
-            <div className="bg-[#FAF7F2] border border-[#EAE3D9] rounded-xl p-3 text-left my-4">
-              <h5 className="text-[12px] font-bold text-[#242220] mb-1.5">Co możesz teraz zrobić:</h5>
-              <ul className="text-[11.5px] text-[#6B645C] space-y-1 pl-4 list-disc">
-                <li>Spróbuj ponownie za chwilę.</li>
-                <li>Sprawdź stabilność swojego połączenia internetowego</li>
-                <li>W razie powtórzenia błędu odśwież stronę aplikacji</li>
-              </ul>
-            </div>
-
-            <button
-              type="button"
-              disabled={isAnalysisLoading || isSigningIn}
-              onClick={handleStartAnalysis}
-              className="w-full min-h-[48px] bg-[#83223A] hover:bg-[#6D1B2F] text-white font-semibold text-sm rounded-xl transition-all shadow-md active:scale-[0.99] flex items-center justify-center mb-2 disabled:opacity-60"
-            >
-              {isAnalysisLoading ? (
-                <>
-                  <Loader2 className="animate-spin mr-2 motion-reduce:animate-none" size={18} aria-hidden="true" focusable="false" />
-                  Próba połączenia...
-                </>
-              ) : (
-                'Ponów próbę analizy'
-              )}
-            </button>
-            <button
-              type="button"
-              onClick={resetStudio}
-              className="w-full min-h-[48px] bg-white border border-[#D5CCC0] hover:bg-[#FAF7F2] text-[#242220] font-semibold text-sm rounded-xl transition-all flex items-center justify-center"
-            >
-              Wróć do ekranu startowego
-            </button>
-          </div>
-        )}
-
-        {/* ========================================================= */}
-        {/* Stan pusty: Brak dopasowanych propozycji                  */}
-        {/* ========================================================= */}
-        {currentView === 'G3' && (
-          <div className="bg-white border border-[#EAE3D9] rounded-2xl p-6 text-center shadow-xs">
-            <div
-              className="w-13 h-13 rounded-full bg-[#FEF7EE] text-[#92540D] border border-[#F7DDBE] flex items-center justify-center text-xl mx-auto mb-3.5"
-              aria-hidden="true"
-            >
-              👗
-            </div>
-            <h2 className="text-[17px] font-bold text-[#242220] tracking-tight">
-              Nie znaleźliśmy teraz pasujących propozycji
-            </h2>
-            <p className="text-[#6B645C] text-[13px] mt-1.5">
-              Rekomendacje fasonów są gotowe, ale nie znaleźliśmy teraz odpowiadających im produktów.
-            </p>
-
-            <div className="bg-[#FAF7F2] border border-[#EAE3D9] rounded-xl p-3 text-left my-4">
-              <h5 className="text-[12px] font-bold text-[#242220] mb-1.5">Zalecane kroki:</h5>
-              <ul className="text-[11.5px] text-[#6B645C] space-y-1 pl-4 list-disc">
-                <li>Możesz przejrzeć rekomendacje krojów i poszukać podobnych ubrań w dowolnym sklepie</li>
-                <li>Wróć do podsumowania sylwetki, aby zapoznać się ze wskazówkami stylistki</li>
-              </ul>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => showView('E')}
-              className="w-full min-h-[48px] bg-[#83223A] hover:bg-[#6D1B2F] text-white font-semibold text-sm rounded-xl transition-all shadow-md active:scale-[0.99] flex items-center justify-center mb-2"
-            >
-              Wróć do rekomendacji krojów
-            </button>
-            <button
-              type="button"
-              onClick={resetStudio}
-              className="w-full min-h-[48px] bg-white border border-[#D5CCC0] hover:bg-[#FAF7F2] text-[#242220] font-semibold text-sm rounded-xl transition-all flex items-center justify-center"
-            >
-              Rozpocznij od nowa
-            </button>
-          </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

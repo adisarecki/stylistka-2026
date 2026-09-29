@@ -39,6 +39,26 @@ export async function GET(req: Request) {
   const rawMarket = searchParams.get('market');
   let marketCode = DEFAULT_MARKET_CODE;
 
+  // Walidacja opcjonalnego parametru kategorii
+  const rawCategory = searchParams.get('category');
+  if (rawCategory !== null) {
+    const validCategories = ['dresses', 'tops', 'skirts', 'pants', 'blazers', 'outerwear', 'full_outfit'];
+    if (!validCategories.includes(rawCategory.trim().toLowerCase())) {
+      return NextResponse.json(
+        {
+          error: 'INVALID_CATEGORY',
+          message: `Kategoria "${rawCategory}" nie jest obsługiwana.`,
+        },
+        {
+          status: 400,
+          headers: {
+            'Cache-Control': 'no-store',
+          },
+        }
+      );
+    }
+  }
+
   if (rawMarket !== null) {
     const normalized = rawMarket.trim().toUpperCase();
     if (!isSupportedMarketCode(normalized)) {

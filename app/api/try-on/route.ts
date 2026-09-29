@@ -13,6 +13,14 @@ import {
   finalizeTryOnCredit,
   refundTryOnCredit,
 } from "@/lib/try-on-credits";
+import {
+  buildServerVtonGarmentDescription,
+  buildReplicateVtonPayload,
+  AllowedVtonCategory,
+  VTON_MODEL_CONSTANTS,
+} from "@/types/styling";
+
+export { buildServerVtonGarmentDescription, buildReplicateVtonPayload, type AllowedVtonCategory };
 
 const replicate = new Replicate({
   auth: process.env.REPLICATE_API_TOKEN,
@@ -22,15 +30,13 @@ const replicate = new Replicate({
 const IDM_VTON_MODEL = "cuuupid/idm-vton:0513734a452173b8173e907e3a59d19a36266e55b48528559432bd21c7d7e985";
 
 // Stałe parametry modelu dla powtarzalności i cache
-const MODEL_GUIDANCE_SCALE = 2.5;
-const MODEL_INFERENCE_STEPS = 30;
-const MODEL_SEED = 42;
+const MODEL_GUIDANCE_SCALE = VTON_MODEL_CONSTANTS.MODEL_GUIDANCE_SCALE;
+const MODEL_INFERENCE_STEPS = VTON_MODEL_CONSTANTS.MODEL_INFERENCE_STEPS;
+const MODEL_SEED = VTON_MODEL_CONSTANTS.MODEL_SEED;
 
 // Limity wejściowe
 const MAX_USER_IMAGE_BYTES = 10 * 1024 * 1024; // 10MB
 const MAX_BASE64_STRING_LENGTH = 15 * 1024 * 1024;
-const MAX_PRODUCT_TITLE_LENGTH = 300;
-const MAX_PROMPT_LENGTH = 1000;
 const ALLOWED_CATEGORIES = new Set(['upper_body', 'lower_body', 'dresses']);
 
 function extractErrorStatus(err: unknown): number | undefined {
@@ -102,7 +108,7 @@ export async function POST(req: Request) {
 
   try {
     const body = await req.json();
-    const { personImage, clothingImage, category, productTitle, replicatePrompt, requestId } = body;
+    const { personImage, clothingImage, category, requestId } = body;
 
     // === KROK 1: WALIDACJA LIMITÓW ORAZ PARAMETRÓW WEJŚCIA ===
     if (!requestId || !isValidRequestId(requestId)) {
@@ -160,15 +166,15 @@ export async function POST(req: Request) {
       );
     }
 
-    if (category && typeof category === 'string' && !ALLOWED_CATEGORIES.has(category.trim())) {
+    if (!category || typeof category !== 'string' || !ALLOWED_CATEGORIES.has(category.trim())) {
       return NextResponse.json(
         { error: 'Nieprawidłowa kategoria odzieży. Dozwolone: upper_body, lower_body, dresses.' },
         { status: 400, headers: { 'Cache-Control': 'no-store' } }
       );
     }
 
-    const safeTitle = (typeof productTitle === 'string' ? productTitle.slice(0, MAX_PRODUCT_TITLE_LENGTH) : '').trim();
-    const safePrompt = (typeof replicatePrompt === 'string' ? replicatePrompt.slice(0, MAX_PROMPT_LENGTH) : '').trim();
+    const finalCategory = category.trim() as AllowedVtonCategory;
+    const finalGarmentDes = buildServerVtonGarmentDescription(finalCategory);
 
     const userImageSha256 = crypto.createHash('sha256').update(userImageBuffer).digest('hex');
 
@@ -226,21 +232,6 @@ export async function POST(req: Request) {
         { status: 400, headers: { 'Cache-Control': 'no-store' } }
       );
     }
-
-    let finalCategory = category || 'upper_body';
-    let finalForceDc = finalCategory === 'dresses';
-    let finalGarmentDes = safePrompt || safeTitle || 'photorealistic clothing, highly detailed';
-
-    const lowerDesc = finalGarmentDes.toLowerCase() + " " + safeTitle.toLowerCase();
-    if (lowerDesc.includes('sukienk') || lowerDesc.includes('suknia') || lowerDesc.includes('maxi') || lowerDesc.includes('balow')) {
-      finalCategory = "dresses";
-      finalForceDc = true;
-
-      if (!lowerDesc.includes('dress')) {
-        finalGarmentDes += ", long elegant dress, full length maxi dress, covering legs entirely down to the floor, highly detailed";
-      }
-    }
-
     // === KROK 4: DETERMINISTYCZNY CACHE LOOKUP ===
     const cacheKey = computeTryOnCacheKey({
       verifiedUid,
@@ -361,17 +352,11 @@ export async function POST(req: Request) {
     });
 
     // === KROK 6: WYWOŁANIE IDM-VTON (GRANICA PŁATNEGO WYWOŁANIA) ===
-    const replicatePayload = {
-      human_img: humanSignedUrl,
+    const replicatePayload = buildReplicateVtonPayload({
+      humanSignedUrl,
       garm_img,
-      garment_des: finalGarmentDes,
       category: finalCategory,
-      force_dc: finalForceDc,
-      num_inference_steps: MODEL_INFERENCE_STEPS,
-      guidance_scale: MODEL_GUIDANCE_SCALE,
-      seed: MODEL_SEED,
-      crop: false,
-    };
+    });
 
     const output = await replicate.run(IDM_VTON_MODEL, { input: replicatePayload });
     const resultUri = Array.isArray(output) ? String(output[0]) : String(output);

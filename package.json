@@ -11,7 +11,9 @@
     "test:products": "tsx test-product-model.ts",
     "test:market": "tsx test-market.ts",
     "test:credits": "tsx test-try-on-credits.ts",
-    "test:landing": "tsx test-landing.ts"
+    "test:landing": "tsx test-landing.ts",
+    "test:styling": "tsx test-styling.ts",
+    "test:ui": "tsx test-ui.ts"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
@@ -25,11 +27,14 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@testing-library/react": "^16.3.3",
+    "@types/jsdom": "^30.0.0",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.3.5",
+    "jsdom": "^30.1.1",
     "tailwindcss": "^4",
     "tsx": "4.23.15",
     "typescript": "^5"
